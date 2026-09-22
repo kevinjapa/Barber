@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4efe8;
-  --foreground: #2c2520;
+  --background: #f6f7f4;
+  --foreground: #1f2925;
+  --ink-soft: #65716b;
+  --line: #dce3dd;
+  --surface: #ffffff;
+  --surface-muted: #eef3ef;
+  --brand: #1d5b4f;
+  --brand-deep: #153e38;
+  --accent: #d89058;
 }
 
 @theme inline {
@@ -15,5 +22,113 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Avenir Next", sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: #c7e2d7;
+  color: var(--brand-deep);
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 82% 0%, rgba(216, 144, 88, 0.13), transparent 24rem),
+    linear-gradient(135deg, #f7f9f6 0%, #eef3ef 100%);
+}
+
+.panel-sidebar {
+  background: linear-gradient(160deg, #173f38 0%, #102d2a 100%);
+  box-shadow: 14px 0 34px rgba(27, 64, 55, 0.08);
+}
+
+.panel-surface {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 12px 32px rgba(36, 65, 56, 0.06);
+}
+
+.panel-kicker {
+  color: var(--brand);
+  letter-spacing: 0.16em;
+}
+
+.panel-title {
+  letter-spacing: 0;
+  color: var(--brand-deep);
+}
+
+.field-control {
+  border: 1px solid #cfdad3;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--foreground);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.field-control:focus {
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(29, 91, 79, 0.12);
+  outline: none;
+}
+
+.action-primary {
+  border-radius: 0.5rem;
+  background: var(--brand-deep);
+  color: #fff;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.action-primary:hover {
+  background: var(--brand);
+  transform: translateY(-1px);
+}
+
+.action-secondary {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--ink-soft);
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.action-secondary:hover {
+  border-color: var(--brand);
+  background: var(--surface-muted);
+  color: var(--brand-deep);
+}
+
+.login-shell {
+  background:
+    radial-gradient(circle at 10% 15%, rgba(216, 144, 88, 0.28), transparent 18rem),
+    linear-gradient(135deg, #153e38 0%, #0d2725 100%);
+}
+
+.login-brand {
+  background: linear-gradient(145deg, #d89058 0%, #b96f45 100%);
+}
+
+@media (max-width: 1023px) {
+  .mobile-nav {
+    scrollbar-width: none;
+  }
+
+  .mobile-nav::-webkit-scrollbar {
+    display: none;
+  }
 }

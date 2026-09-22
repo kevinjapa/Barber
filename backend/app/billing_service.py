@@ -22,8 +22,8 @@ PAYMENT_METHOD_CODES = {
 INVOICE_STATUS_CODES = {
     "paid": "P",
     "pagada": "P",
-    "pending": "P",
-    "pendiente": "P",
+    "pending": "D",
+    "pendiente": "D",
     "cancelled": "C",
     "cancelada": "C",
 }

@@ -10,9 +10,23 @@ import { DashboardView } from "@/components/barber/DashboardView";
 import { LoginScreen } from "@/components/barber/LoginScreen";
 import { PanelNavigation } from "@/components/barber/PanelNavigation";
 import { ServicesPanel } from "@/components/barber/ServicesPanel";
-import { emptyEmployee, emptyUser, type Appointment, type AuthenticatedUser, type Client, type Employee, type EmployeeForm, type Invoice, type PanelSection, type Product, type Service, type UserForm } from "@/components/barber/types";
+import {
+  emptyEmployee,
+  emptyUser,
+  type Appointment,
+  type AuthenticatedUser,
+  type Client,
+  type Employee,
+  type EmployeeForm,
+  type Invoice,
+  type PanelSection,
+  type Product,
+  type Service,
+  type UserForm,
+} from "@/components/barber/types";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+// Las llamadas pasan por los rewrites de Next para funcionar igual en localhost y en la IP LAN.
+const apiUrl = "";
 const sessionKey = "barberhub.session";
 
 type AdministrationTab = "employee" | "user";
@@ -40,7 +54,8 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activeSection, setActiveSection] = useState<PanelSection>("dashboard");
-  const [administrationTab, setAdministrationTab] = useState<AdministrationTab>("employee");
+  const [administrationTab, setAdministrationTab] =
+    useState<AdministrationTab>("employee");
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [employeeForm, setEmployeeForm] = useState<EmployeeForm>(emptyEmployee);
@@ -59,7 +74,8 @@ export default function Home() {
         setIsLoading(true);
         setHasError(false);
         const response = await fetch(`${apiUrl}/api/services`);
-        if (!response.ok) throw new Error("No se pudieron cargar los servicios");
+        if (!response.ok)
+          throw new Error("No se pudieron cargar los servicios");
         setServices(await response.json());
       } catch {
         setHasError(true);
@@ -91,7 +107,8 @@ export default function Home() {
     async function loadEmployees() {
       try {
         const response = await fetch(`${apiUrl}/api/employees`);
-        if (!response.ok) throw new Error("No se pudieron cargar los empleados");
+        if (!response.ok)
+          throw new Error("No se pudieron cargar los empleados");
         setEmployees(await response.json());
       } catch {
         setEmployees([]);
@@ -101,7 +118,8 @@ export default function Home() {
     async function loadProducts() {
       try {
         const response = await fetch(`${apiUrl}/api/products`);
-        if (!response.ok) throw new Error("No se pudieron cargar los productos");
+        if (!response.ok)
+          throw new Error("No se pudieron cargar los productos");
         setProducts(await response.json());
       } catch {
         setProducts([]);
@@ -125,15 +143,32 @@ export default function Home() {
     setLoginError("");
     setIsLoggingIn(true);
     try {
-      const response = await fetch(`${apiUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      const response = await fetch(`${apiUrl}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail ?? "No se pudo iniciar sesión");
-      const authenticatedUser: AuthenticatedUser = { username: result.username, last_name: result.last_name, role: result.role, empid: result.empid };
-      window.localStorage.setItem(sessionKey, JSON.stringify(authenticatedUser));
+      if (!response.ok)
+        throw new Error(result.detail ?? "No se pudo iniciar sesión");
+      const authenticatedUser: AuthenticatedUser = {
+        username: result.username,
+        last_name: result.last_name,
+        role: result.role,
+        empid: result.empid,
+      };
+      window.localStorage.setItem(
+        sessionKey,
+        JSON.stringify(authenticatedUser),
+      );
       setUser(authenticatedUser);
       setPassword("");
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "No se pudo conectar con la API");
+      setLoginError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo conectar con la API",
+      );
     } finally {
       setIsLoggingIn(false);
     }
@@ -165,14 +200,25 @@ export default function Home() {
     setEmployeeMessage("");
     setIsCreatingEmployee(true);
     try {
-      const response = await fetch(`${apiUrl}/api/employee`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(employeeForm) });
+      const response = await fetch(`${apiUrl}/api/employee`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(employeeForm),
+      });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail ?? "No se pudo registrar el empleado");
-      setEmployeeMessage("Empleado registrado correctamente. Ahora puedes crear su usuario.");
+      if (!response.ok)
+        throw new Error(result.detail ?? "No se pudo registrar el empleado");
+      setEmployeeMessage(
+        "Empleado registrado correctamente. Ahora puedes crear su usuario.",
+      );
       setUserForm((current) => ({ ...current, dni: employeeForm.dni }));
       setEmployeeForm(emptyEmployee);
     } catch (error) {
-      setEmployeeError(error instanceof Error ? error.message : "No se pudo registrar el empleado");
+      setEmployeeError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo registrar el empleado",
+      );
     } finally {
       setIsCreatingEmployee(false);
     }
@@ -184,13 +230,20 @@ export default function Home() {
     setUserMessage("");
     setIsCreatingUser(true);
     try {
-      const response = await fetch(`${apiUrl}/api/appuser`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(userForm) });
+      const response = await fetch(`${apiUrl}/api/appuser`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userForm),
+      });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail ?? "No se pudo crear el usuario");
+      if (!response.ok)
+        throw new Error(result.detail ?? "No se pudo crear el usuario");
       setUserMessage("Usuario creado correctamente.");
       setUserForm(emptyUser);
     } catch (error) {
-      setUserError(error instanceof Error ? error.message : "No se pudo crear el usuario");
+      setUserError(
+        error instanceof Error ? error.message : "No se pudo crear el usuario",
+      );
     } finally {
       setIsCreatingUser(false);
     }
@@ -238,28 +291,174 @@ export default function Home() {
   }
 
   if (!user) {
-    return <LoginScreen username={username} password={password} error={loginError} isSubmitting={isLoggingIn} onUsernameChange={setUsername} onPasswordChange={setPassword} onSubmit={handleLogin} />;
+    return (
+      <LoginScreen
+        username={username}
+        password={password}
+        error={loginError}
+        isSubmitting={isLoggingIn}
+        onUsernameChange={setUsername}
+        onPasswordChange={setPassword}
+        onSubmit={handleLogin}
+      />
+    );
   }
 
-  const isAdministration = activeSection === "administration" || activeSection === "administration-users";
-  const sectionLabel = activeSection === "appointments" ? "Citas" : activeSection === "clients" ? "Clientes" : activeSection === "services" ? "Servicios" : "Facturación";
+  const isAdministration =
+    activeSection === "administration" ||
+    activeSection === "administration-users";
+  const sectionLabel =
+    activeSection === "appointments"
+      ? "Citas"
+      : activeSection === "clients"
+        ? "Clientes"
+        : activeSection === "services"
+          ? "Servicios"
+          : "Facturación";
 
   return (
-    <main className="min-h-screen bg-[#f4efe8] px-4 py-4 text-[#2c2520] sm:px-8 lg:px-10">
-      <div className="mx-auto flex max-w-[1500px] gap-6">
-        <PanelNavigation user={user} activeSection={activeSection} onSectionChange={(section) => { setActiveSection(section); if (section === "administration") setAdministrationTab("employee"); }} onLogout={handleLogout} />
+    <main className="app-shell min-h-screen px-4 py-4 text-[#1f2925] sm:px-8 lg:px-10">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-4 lg:flex-row lg:gap-6">
+        <PanelNavigation
+          user={user}
+          activeSection={activeSection}
+          onSectionChange={(section) => {
+            setActiveSection(section);
+            if (section === "administration") setAdministrationTab("employee");
+          }}
+          onLogout={handleLogout}
+        />
         <div className="min-w-0 flex-1">
-          <header className="flex flex-col justify-between gap-6 border-b border-[#d9cec1] pb-8 sm:flex-row sm:items-end">
-            <div><p className="mb-3 text-sm font-semibold uppercase tracking-[0.28em] text-[#9b5b3b]">AlvaBarber / Panel</p><h1 className="font-serif text-5xl leading-none sm:text-6xl">Buenos días, {user.last_name || user.username}.</h1><p className="mt-4 max-w-xl text-[#75675d]">Tu operación de hoy, clara y lista para atender a cada cliente.</p></div>
-            <div className="flex items-center gap-4"><span className="text-right text-sm text-[#75675d]"><strong className="block text-[#2c2520]">{user.username}</strong>{user.role === "adm" ? "Administrador" : "Empleado"}</span><button type="button" onClick={handleLogout} className="w-fit bg-[#2c2520] px-5 py-3 text-sm font-semibold text-[#fffaf4] transition hover:bg-[#9b5b3b] lg:hidden">Cerrar sesión</button></div>
+          <header className="flex flex-col justify-between gap-6 border-b border-[#dce3dd] pb-8 sm:flex-row sm:items-end">
+            <div>
+              <p className="panel-kicker mb-3 text-sm font-semibold uppercase">
+                AlvaBarber / Panel
+              </p>
+              <h1 className="panel-title font-serif text-4xl leading-[1.05] sm:text-5xl lg:text-6xl">
+                {/* Buenos días, {user.last_name || user.username}. */}
+                Buenos días, {user.username}.
+              </h1>
+              <p className="mt-4 max-w-xl text-[#65716b]">
+                Tu operación de hoy, clara y lista para atender a cada cliente.
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-right text-sm text-[#65716b]">
+                <strong className="block text-[#1f2925]">
+                  {user.username}
+                </strong>
+                {user.role === "adm" ? "Administrador" : "Empleado"}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-fit bg-[#153e38] px-5 py-3 text-sm font-semibold text-[#fffaf4] transition hover:bg-[#1d5b4f] lg:hidden"
+              >
+                Cerrar sesión
+              </button>
+            </div>
           </header>
-          {user.role === "adm" && isAdministration && <AdministrationPanel activeTab={activeSection === "administration-users" ? "user" : administrationTab} employeeForm={employeeForm} userForm={userForm} employeeError={employeeError} employeeMessage={employeeMessage} userError={userError} userMessage={userMessage} isCreatingEmployee={isCreatingEmployee} isCreatingUser={isCreatingUser} onTabChange={(tab) => { setAdministrationTab(tab); setActiveSection(tab === "user" ? "administration-users" : "administration"); }} onEmployeeFieldChange={updateEmployeeField} onUserFieldChange={updateUserField} onCreateEmployee={handleCreateEmployee} onCreateUser={handleCreateUser} />}
-          {activeSection === "dashboard" && <DashboardView services={services} isLoading={isLoading} hasError={hasError} />}
-          {activeSection === "services" && <ServicesPanel apiUrl={apiUrl} user={user} services={services} onChanged={() => void refreshServices()} />}
-          {activeSection === "clients" && <ClientsPanel apiUrl={apiUrl} clients={clients} onChanged={() => void refreshClients()} />}
-          {activeSection === "appointments" && <AppointmentsPanel apiUrl={apiUrl} currentEmployeeId={user.empid} appointments={appointments} clients={clients} employees={employees} onChanged={() => void refreshAppointments()} />}
-          {activeSection === "billing" && <BillingPanel apiUrl={apiUrl} clients={clients} appointments={appointments} services={services} products={products} invoices={invoices} onChanged={() => void refreshInvoices()} />}
-          {activeSection !== "dashboard" && activeSection !== "services" && activeSection !== "clients" && activeSection !== "appointments" && activeSection !== "billing" && !isAdministration && <section className="py-8"><div className="border-b border-[#d9cec1] pb-6"><p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#9b5b3b]">Módulo</p><h2 className="mt-2 font-serif text-4xl">{sectionLabel}</h2><p className="mt-3 text-[#75675d]">Este espacio está listo para conectar las operaciones de {sectionLabel.toLowerCase()}.</p></div><div className="mt-8 border border-dashed border-[#cbbdaf] bg-[#fffaf4] p-8"><p className="font-serif text-2xl">Módulo en preparación</p><p className="mt-2 max-w-xl text-[#75675d]">La navegación ya está disponible. El siguiente paso será conectar esta vista con sus endpoints correspondientes.</p></div></section>}
+          {user.role === "adm" && isAdministration && (
+            <AdministrationPanel
+              activeTab={
+                activeSection === "administration-users"
+                  ? "user"
+                  : administrationTab
+              }
+              employeeForm={employeeForm}
+              userForm={userForm}
+              employeeError={employeeError}
+              employeeMessage={employeeMessage}
+              userError={userError}
+              userMessage={userMessage}
+              isCreatingEmployee={isCreatingEmployee}
+              isCreatingUser={isCreatingUser}
+              onTabChange={(tab) => {
+                setAdministrationTab(tab);
+                setActiveSection(
+                  tab === "user" ? "administration-users" : "administration",
+                );
+              }}
+              onEmployeeFieldChange={updateEmployeeField}
+              onUserFieldChange={updateUserField}
+              onCreateEmployee={handleCreateEmployee}
+              onCreateUser={handleCreateUser}
+            />
+          )}
+          {activeSection === "dashboard" && (
+            <DashboardView
+              services={services}
+              clients={clients}
+              employees={employees}
+              appointments={appointments}
+              invoices={invoices}
+              isLoading={isLoading}
+              hasError={hasError}
+              onNavigate={setActiveSection}
+            />
+          )}
+          {activeSection === "services" && (
+            <ServicesPanel
+              apiUrl={apiUrl}
+              user={user}
+              services={services}
+              onChanged={() => void refreshServices()}
+            />
+          )}
+          {activeSection === "clients" && (
+            <ClientsPanel
+              apiUrl={apiUrl}
+              clients={clients}
+              onChanged={() => void refreshClients()}
+            />
+          )}
+          {activeSection === "appointments" && (
+            <AppointmentsPanel
+              apiUrl={apiUrl}
+              currentEmployeeId={user.empid}
+              appointments={appointments}
+              clients={clients}
+              employees={employees}
+              onChanged={() => void refreshAppointments()}
+            />
+          )}
+          {activeSection === "billing" && (
+            <BillingPanel
+              apiUrl={apiUrl}
+              clients={clients}
+              appointments={appointments}
+              services={services}
+              products={products}
+              invoices={invoices}
+              onChanged={() => void refreshInvoices()}
+            />
+          )}
+          {activeSection !== "dashboard" &&
+            activeSection !== "services" &&
+            activeSection !== "clients" &&
+            activeSection !== "appointments" &&
+            activeSection !== "billing" &&
+            !isAdministration && (
+              <section className="py-8">
+                <div className="border-b border-[#d9cec1] pb-6">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#9b5b3b]">
+                    Módulo
+                  </p>
+                  <h2 className="mt-2 font-serif text-4xl">{sectionLabel}</h2>
+                  <p className="mt-3 text-[#75675d]">
+                    Este espacio está listo para conectar las operaciones de{" "}
+                    {sectionLabel.toLowerCase()}.
+                  </p>
+                </div>
+                <div className="mt-8 border border-dashed border-[#cbbdaf] bg-[#fffaf4] p-8">
+                  <p className="font-serif text-2xl">Módulo en preparación</p>
+                  <p className="mt-2 max-w-xl text-[#75675d]">
+                    La navegación ya está disponible. El siguiente paso será
+                    conectar esta vista con sus endpoints correspondientes.
+                  </p>
+                </div>
+              </section>
+            )}
         </div>
       </div>
     </main>

@@ -29,6 +29,7 @@ from .database import (
     list_active_clients,
     list_invoices,
     find_invoice,
+    update_invoice_status,
     list_all_services,
     list_products,
     update_client,
@@ -377,6 +378,22 @@ def get_invoice(inv_heaid: int):
     if invoice is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
     return invoice
+
+
+@app.patch("/api/invoices/{inv_heaid}/status")
+def change_invoice_status(inv_heaid: int, invoice: dict):
+    invoice_status = invoice.get("status")
+    if invoice_status not in {"D", "P", "C", "pendiente", "pagada", "cancelada"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Estado de factura inválido")
+    if invoice_status in {"P", "pagada"}:
+        status_code = "P"
+    elif invoice_status in {"D", "pendiente"}:
+        status_code = "D"
+    else:
+        status_code = "C"
+    if not update_invoice_status(inv_heaid, status_code):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+    return {"status": "ok", "message": "Estado de factura actualizado correctamente"}
 
 # Citas
 @app.get("/api/appointments")

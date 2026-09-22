@@ -536,6 +536,20 @@ def find_invoice(inv_heaid: int) -> Optional[dict]:
             invoice["details"] = cursor.fetchall()
             return invoice
 
+
+def update_invoice_status(inv_heaid: int, invoice_status: str) -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                update invoice_header
+                set status = %s
+                where inv_heaid = %s
+                """,
+                (invoice_status, inv_heaid),
+            )
+            return cursor.rowcount > 0
+
 # ---- Ingresar citas 
 def insert_appointment(date:str, start_time:time,end_time:time, description:str,status:str, empid:int, clientid:int,)-> None:
     with get_connection() as connection:

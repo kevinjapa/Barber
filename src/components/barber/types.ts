@@ -78,6 +78,13 @@ export type InvoiceWithDetails = Invoice & {
   details: InvoiceDetail[];
 };
 
+export type PendingPaymentInvoice = {
+  inv_heaid: number;
+  code: string;
+  total: number;
+  paymentMethod: string;
+};
+
 export type AuthenticatedUser = {
   username: string;
   last_name?: string;

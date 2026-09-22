@@ -31,8 +31,7 @@ const emptyForm: AppointmentForm = {
   clientid: "",
 };
 
-const inputClass =
-  "mt-2 w-full border-b border-[#cbbdaf] bg-transparent px-0 py-3 outline-none focus:border-[#c8754e]";
+const inputClass = "field-control mt-2 w-full px-3 py-3";
 const statusLabels: Record<string, string> = {
   P: "Pendiente",
   A: "Confirmada",
@@ -246,22 +245,22 @@ export function AppointmentsPanel({
         </p>
       )}
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="border border-[#d9cec1] bg-[#fffaf4] p-6">
+        <div className="panel-surface border p-6">
           <div className="flex flex-col justify-between gap-4 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-center">
             <h3 className="font-serif text-2xl">Agenda</h3>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <input
                 type="date"
                 aria-label="Filtrar por fecha"
                 value={dateFilter}
                 onChange={(event) => setDateFilter(event.target.value)}
-                className="border-b border-[#cbbdaf] bg-transparent px-0 py-2 text-sm outline-none focus:border-[#c8754e]"
+                className="field-control min-w-0 flex-1 px-3 py-2 text-sm sm:flex-none"
               />
               <select
                 aria-label="Filtrar por estado"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="border-b border-[#cbbdaf] bg-transparent py-2 text-sm outline-none focus:border-[#c8754e]"
+                className="field-control min-w-0 flex-1 px-3 py-2 text-sm sm:flex-none"
               >
                 <option value="all">Todos</option>
                 <option value="P">Pendientes</option>
@@ -274,17 +273,44 @@ export function AppointmentsPanel({
             <div className="mt-4 border border-[#d9cec1] bg-[#fffaf4] p-5">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">Cita seleccionada</p>
-                  <p className="mt-1 font-semibold">{selectedAppointment.client_name} {selectedAppointment.client_last_name}</p>
-                  <p className="mt-1 text-sm text-[#75675d]">Estado actual: {statusLabels[selectedAppointment.status] ?? selectedAppointment.status}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
+                    Cita seleccionada
+                  </p>
+                  <p className="mt-1 font-semibold">
+                    {selectedAppointment.client_name}{" "}
+                    {selectedAppointment.client_last_name}
+                  </p>
+                  <p className="mt-1 text-sm text-[#75675d]">
+                    Estado actual:{" "}
+                    {statusLabels[selectedAppointment.status] ??
+                      selectedAppointment.status}
+                  </p>
                 </div>
                 {selectedAppointment.status !== "F" ? (
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" disabled={isUpdatingStatus || selectedAppointment.status === "A"} onClick={() => void handleStatusChange("A")} className="border border-[#cbbdaf] px-3 py-2 text-sm font-semibold text-[#9b5b3b] disabled:cursor-not-allowed disabled:opacity-40">Confirmar</button>
-                    <button type="button" disabled={isUpdatingStatus} onClick={() => void handleStatusChange("F")} className="bg-[#47704b] px-3 py-2 text-sm font-semibold text-[#fffaf4] disabled:cursor-not-allowed disabled:opacity-50">Finalizar</button>
+                    <button
+                      type="button"
+                      disabled={
+                        isUpdatingStatus || selectedAppointment.status === "A"
+                      }
+                      onClick={() => void handleStatusChange("A")}
+                      className="border border-[#cbbdaf] px-3 py-2 text-sm font-semibold text-[#9b5b3b] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Confirmar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isUpdatingStatus}
+                      onClick={() => void handleStatusChange("F")}
+                      className="bg-[#47704b] px-3 py-2 text-sm font-semibold text-[#fffaf4] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Finalizar
+                    </button>
                   </div>
                 ) : (
-                  <span className="text-sm font-semibold text-[#47704b]">Finalizada · no se puede cancelar</span>
+                  <span className="text-sm font-semibold text-[#47704b]">
+                    Finalizada · no se puede cancelar
+                  </span>
                 )}
               </div>
             </div>
@@ -357,7 +383,7 @@ export function AppointmentsPanel({
         </div>
         <form
           onSubmit={handleSubmit}
-          className="h-fit border border-[#d9cec1] bg-[#fffaf4] p-6"
+          className="panel-surface h-fit border p-6"
         >
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
             {editingAppointment ? "Editar cita" : "Nueva cita"}
@@ -464,7 +490,7 @@ export function AppointmentsPanel({
             <button
               type="submit"
               disabled={isSaving}
-              className="bg-[#c8754e] px-5 py-3 text-sm font-semibold text-[#fffaf4] transition hover:bg-[#9b5b3b] disabled:cursor-not-allowed disabled:opacity-60"
+              className="action-primary px-5 py-3 text-sm font-semibold disabled:opacity-60"
             >
               {isSaving
                 ? "Guardando..."
