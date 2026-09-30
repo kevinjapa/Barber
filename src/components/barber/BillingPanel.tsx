@@ -16,6 +16,16 @@ type InvoiceItem = {
   quantity: number;
 };
 
+type NewClientForm = {
+  dni: string;
+  name: string;
+  last_name: string;
+  email: string;
+  address: string;
+  phone: string;
+  ruc: string;
+};
+
 type BillingPanelProps = {
   apiUrl: string;
   clients: Client[];
@@ -32,6 +42,15 @@ const paymentLabels: Record<string, string> = {
   R: "Transferencia",
 };
 const statusLabels: Record<string, string> = { D: "Pendiente", P: "Pagada", C: "Cancelada" };
+const emptyNewClient: NewClientForm = {
+  dni: "",
+  name: "",
+  last_name: "",
+  email: "",
+  address: "",
+  phone: "",
+  ruc: "",
+};
 
 async function readApiResponse(response: Response) {
   const result = await response.json().catch(() => ({}));
@@ -53,8 +72,12 @@ export function BillingPanel({
   invoices,
   onChanged,
 }: BillingPanelProps) {
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [code, setCode] = useState(createCode);
   const [clientid, setClientid] = useState("");
+  const [clientDni, setClientDni] = useState("");
+  const [newClient, setNewClient] = useState<NewClientForm>(emptyNewClient);
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [appoid, setAppoid] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
   const [items, setItems] = useState<InvoiceItem[]>([
@@ -81,6 +104,32 @@ export function BillingPanel({
     );
   }, [invoices, query]);
 
+  const selectedClient = clients.find(
+    (client) => String(client.clientid) === clientid,
+  );
+  const hasMatchingClient = clients.some(
+    (client) => client.dni.trim().toLowerCase() === clientDni.trim().toLowerCase(),
+  );
+  const availableAppointments = useMemo(
+    () =>
+      clientid
+        ? appointments.filter((appointment) => String(appointment.clientid) === clientid)
+        : appointments,
+    [appointments, clientid],
+  );
+  const completedClientAppointments = availableAppointments.filter(
+    (appointment) =>
+      String(appointment.clientid) === clientid && appointment.status === "F",
+  );
+  let effectiveAppoid = "";
+  if (availableAppointments.some((appointment) => String(appointment.appoid) === appoid)) {
+    effectiveAppoid = appoid;
+  } else if (completedClientAppointments.length === 1) {
+    effectiveAppoid = String(completedClientAppointments[0].appoid);
+  }
+  let appointmentPlaceholder = "No hay citas disponibles";
+  if (availableAppointments.length) appointmentPlaceholder = "Selecciona una cita";
+
   function updateItem(
     index: number,
     field: keyof InvoiceItem,
@@ -98,6 +147,47 @@ export function BillingPanel({
       ...current,
       { kind: "service", id: "", quantity: 1 },
     ]);
+  }
+
+  function handleClientDniChange(value: string) {
+    setClientDni(value);
+    const client = clients.find(
+      (current) => current.dni.trim().toLowerCase() === value.trim().toLowerCase(),
+    );
+    setClientid(client ? String(client.clientid) : "");
+    setNewClient((current) => ({ ...current, dni: value }));
+  }
+
+  function updateNewClient(field: keyof NewClientForm, value: string) {
+    setNewClient((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleCreateClient() {
+    setError("");
+    setMessage("");
+    setIsCreatingClient(true);
+    try {
+      const result = await readApiResponse(
+        await fetch(`${apiUrl}/api/client`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newClient),
+        }),
+      );
+      setClientid(String(result.clientid));
+      setClientDni(newClient.dni);
+      setMessage("Cliente creado y seleccionado para la factura.");
+      setNewClient(emptyNewClient);
+      onChanged();
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "No se pudo crear el cliente",
+      );
+    } finally {
+      setIsCreatingClient(false);
+    }
   }
 
   function removeItem(index: number) {
@@ -175,7 +265,7 @@ export function BillingPanel({
             payment_method: paymentMethod,
             status: "pendiente",
             clientid: clientid ? Number(clientid) : null,
-            appoid: appoid ? Number(appoid) : null,
+            appoid: effectiveAppoid ? Number(effectiveAppoid) : null,
             details,
           }),
         }),
@@ -189,6 +279,7 @@ export function BillingPanel({
       });
       setCode(createCode());
       setClientid("");
+      setClientDni("");
       setAppoid("");
       setItems([{ kind: "service", id: "", quantity: 1 }]);
       onChanged();
@@ -202,6 +293,35 @@ export function BillingPanel({
       setIsSaving(false);
     }
   }
+  // funcion para enviar correo electronico con la factura
+  async function handleSendInvoiceEmail() {
+    if (!selectedInvoice) return;
+    setError("");
+    setMessage("");
+    setIsSendingEmail(true);
+    try {
+      await readApiResponse(
+        await fetch(
+          `${apiUrl}/api/invoices/${selectedInvoice.inv_heaid}/send-email`,
+          {
+            method: "POST",
+          },
+        ),
+      );
+      setMessage(
+        `El comprobante de la factura ${selectedInvoice.code} se está enviando al correo del cliente.`,
+      );
+    } catch (emailError) {
+      setError(
+        emailError instanceof Error
+          ? emailError.message
+          : "No se pudo enviar el comprobante",
+      );
+    } finally {
+      setIsSendingEmail(false);
+    }
+    }
+
 
   async function handleMarkAsPaid() {
     if (!pendingPayment) return;
@@ -273,38 +393,101 @@ export function BillingPanel({
               Código
               <input
                 required
+                readOnly
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
                 className="field-control mt-2 w-full px-3 py-3"
               />
             </label>
             <label className="block text-sm font-semibold">
-              Cliente
-              <select
-                value={clientid}
-                onChange={(event) => setClientid(event.target.value)}
+              Cédula del cliente
+              <input
+                value={clientDni}
+                list="billing-client-dnis"
+                onChange={(event) => handleClientDniChange(event.target.value)}
+                placeholder="Ingresa la cédula"
                 className="field-control mt-2 w-full px-3 py-3"
-              >
-                <option value="">Venta sin cliente</option>
+              />
+              <datalist id="billing-client-dnis">
                 {clients.map((client) => (
-                  <option key={client.clientid} value={client.clientid}>
-                    {client.name} {client.last_name} · {client.dni}
+                  <option key={client.clientid} value={client.dni}>
+                    {client.name} {client.last_name}
                   </option>
                 ))}
-              </select>
+              </datalist>
             </label>
+            {selectedClient && (
+              <p className="-mt-2 text-sm text-[#47704b]">
+                Cliente: {selectedClient.name} {selectedClient.last_name}
+              </p>
+            )}
+            {clientDni.trim() && !hasMatchingClient && !clientid && (
+              <div
+                className="border border-[#d9cec1] bg-[#fffaf4] p-4"
+              >
+                <p className="font-semibold">Cliente no registrado</p>
+                <p className="mt-1 text-sm text-[#75675d]">
+                  Completa sus datos para continuar con la factura.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <input
+                    required
+                    placeholder="Nombre"
+                    value={newClient.name}
+                    onChange={(event) => updateNewClient("name", event.target.value)}
+                    className="field-control px-3 py-2 text-sm"
+                  />
+                  <input
+                    required
+                    placeholder="Apellidos"
+                    value={newClient.last_name}
+                    onChange={(event) => updateNewClient("last_name", event.target.value)}
+                    className="field-control px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Correo"
+                    value={newClient.email}
+                    onChange={(event) => updateNewClient("email", event.target.value)}
+                    className="field-control px-3 py-2 text-sm"
+                  />
+                  <input
+                    placeholder="Teléfono"
+                    value={newClient.phone}
+                    onChange={(event) => updateNewClient("phone", event.target.value)}
+                    className="field-control px-3 py-2 text-sm"
+                  />
+                  <input
+                    required
+                    placeholder="RUC"
+                    value={newClient.ruc}
+                    onChange={(event) => updateNewClient("ruc", event.target.value)}
+                    className="field-control px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateClient()}
+                  disabled={isCreatingClient}
+                  className="action-secondary mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {isCreatingClient ? "Creando..." : "Crear y seleccionar cliente"}
+                </button>
+              </div>
+            )}
             <label className="block text-sm font-semibold">
               Cita relacionada
               <select
-                value={appoid}
+                value={effectiveAppoid}
                 onChange={(event) => setAppoid(event.target.value)}
                 className="field-control mt-2 w-full px-3 py-3"
               >
-                <option value="">Sin cita</option>
-                {appointments.map((appointment) => (
+                <option value="">
+                  {appointmentPlaceholder}
+                </option>
+                {availableAppointments.map((appointment) => (
                   <option key={appointment.appoid} value={appointment.appoid}>
-                    {appointment.client_name} {appointment.client_last_name} ·{" "}
-                    {appointment.date.slice(0, 10)}
+                    {appointment.date.slice(0, 10)} · {appointment.start_time} · {appointment.description || "Cita completada"}
                   </option>
                 ))}
               </select>
@@ -499,6 +682,14 @@ export function BillingPanel({
                       Marcar como pagada
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSendInvoiceEmail()}
+                    disabled={isSendingEmail}
+                    className="action-secondary mt-3 block px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {isSendingEmail ? "Enviando..." : "Enviar comprobante por correo"}
+                  </button>
                 </div>
               </div>
               {isLoadingDetails && (

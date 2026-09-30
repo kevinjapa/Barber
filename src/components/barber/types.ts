@@ -92,7 +92,7 @@ export type AuthenticatedUser = {
   empid?: number;
 };
 
-export type PanelSection = "dashboard" | "appointments" | "clients" | "services" | "billing" | "administration" | "administration-users";
+export type PanelSection = "dashboard" | "appointments" | "clients" | "services" | "products" | "billing" | "administration" | "administration-users";
 
 export type EmployeeForm = {
   dni: string;

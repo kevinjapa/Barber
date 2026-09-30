@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AdministrationPanel } from "@/components/barber/AdministrationPanel";
 import { AppointmentsPanel } from "@/components/barber/AppointmentsPanel";
@@ -9,6 +9,7 @@ import { ClientsPanel } from "@/components/barber/ClientsPanel";
 import { DashboardView } from "@/components/barber/DashboardView";
 import { LoginScreen } from "@/components/barber/LoginScreen";
 import { PanelNavigation } from "@/components/barber/PanelNavigation";
+import { ProductsPanel } from "@/components/barber/ProductsPanel";
 import { ServicesPanel } from "@/components/barber/ServicesPanel";
 import {
   emptyEmployee,
@@ -31,18 +32,20 @@ const sessionKey = "barberhub.session";
 
 type AdministrationTab = "employee" | "user";
 
+function getSectionLabel(section: PanelSection) {
+  const labels: Partial<Record<PanelSection, string>> = {
+    appointments: "Citas",
+    clients: "Clientes",
+    services: "Servicios",
+    products: "Productos",
+    billing: "Facturación",
+  };
+  return labels[section] ?? "Facturación";
+}
+
 export default function Home() {
-  const [user, setUser] = useState<AuthenticatedUser | null>(() => {
-    if (typeof window === "undefined") return null;
-    const savedSession = window.localStorage.getItem(sessionKey);
-    if (!savedSession) return null;
-    try {
-      return JSON.parse(savedSession) as AuthenticatedUser;
-    } catch {
-      window.localStorage.removeItem(sessionKey);
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -66,6 +69,20 @@ export default function Home() {
   const [userMessage, setUserMessage] = useState("");
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  useEffect(() => {
+    const savedSession = window.localStorage.getItem(sessionKey);
+    startTransition(() => {
+      if (savedSession) {
+        try {
+          setUser(JSON.parse(savedSession) as AuthenticatedUser);
+        } catch {
+          window.localStorage.removeItem(sessionKey);
+        }
+      }
+      setIsHydrated(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -290,6 +307,18 @@ export default function Home() {
     }
   }
 
+  async function refreshProducts() {
+    try {
+      const response = await fetch(`${apiUrl}/api/products`);
+      if (!response.ok) throw new Error("No se pudieron cargar los productos");
+      setProducts(await response.json());
+    } catch {
+      setProducts([]);
+    }
+  }
+
+  if (!isHydrated) return null;
+
   if (!user) {
     return (
       <LoginScreen
@@ -307,14 +336,7 @@ export default function Home() {
   const isAdministration =
     activeSection === "administration" ||
     activeSection === "administration-users";
-  const sectionLabel =
-    activeSection === "appointments"
-      ? "Citas"
-      : activeSection === "clients"
-        ? "Clientes"
-        : activeSection === "services"
-          ? "Servicios"
-          : "Facturación";
+  const sectionLabel = getSectionLabel(activeSection);
 
   return (
     <main className="app-shell min-h-screen px-4 py-4 text-[#1f2925] sm:px-8 lg:px-10">
@@ -405,6 +427,14 @@ export default function Home() {
               onChanged={() => void refreshServices()}
             />
           )}
+          {activeSection === "products" && (
+            <ProductsPanel
+              apiUrl={apiUrl}
+              user={user}
+              products={products}
+              onChanged={() => void refreshProducts()}
+            />
+          )}
           {activeSection === "clients" && (
             <ClientsPanel
               apiUrl={apiUrl}
@@ -435,6 +465,7 @@ export default function Home() {
           )}
           {activeSection !== "dashboard" &&
             activeSection !== "services" &&
+            activeSection !== "products" &&
             activeSection !== "clients" &&
             activeSection !== "appointments" &&
             activeSection !== "billing" &&

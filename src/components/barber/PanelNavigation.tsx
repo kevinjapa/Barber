@@ -18,6 +18,7 @@ const navigationItems: NavigationItem[] = [
   { id: "appointments", label: "Citas", description: "Agenda del día" },
   { id: "clients", label: "Clientes", description: "Directorio" },
   { id: "services", label: "Servicios", description: "Catálogo" },
+  { id: "products", label: "Productos", description: "Inventario" },
   { id: "billing", label: "Facturación", description: "Comprobantes" },
 ];
 

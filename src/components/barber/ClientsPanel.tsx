@@ -287,7 +287,7 @@ export function ClientsPanel({
             <label className="block text-sm font-semibold">
               Correo
               <input
-                required
+                // required
                 type="email"
                 value={form.email}
                 onChange={(event) => updateField("email", event.target.value)}
@@ -297,7 +297,7 @@ export function ClientsPanel({
             <label className="block text-sm font-semibold">
               RUC
               <input
-                required
+                // required
                 value={form.ruc}
                 onChange={(event) => updateField("ruc", event.target.value)}
                 className={inputClass}
