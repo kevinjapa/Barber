@@ -63,6 +63,9 @@ export function AdministrationPanel({
         >
           Nuevo usuario
         </button>
+
+        <button type="button" onClick={() => onTabChange("user")}>Lista de empleados</button>
+        
       </div>
       {activeTab === "employee" ? (
         <form

@@ -15,15 +15,15 @@ class DatabaseSettings(BaseSettings):
     password: str
 
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parents[2] / ".env",
+        env_file=Path(__file__).resolve().parent.parent / ".env",
         env_prefix="",
         case_sensitive=True,
         extra="ignore",
     )
 
 
-settings = DatabaseSettings()
 
+settings = DatabaseSettings()
 
 def get_connection() -> psycopg.Connection:
     return psycopg.connect(
@@ -103,40 +103,62 @@ def insert_emloyee(dni:str, name:str, last_name:str, email:str, address:str, pho
     personid = None
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                insert into person(dni,name, last_name, email, address, phone)
-                values (%s,%s, %s,%s, %s,%s) returning personid
-                """,
-                (dni,name, last_name, email, address, phone),
-            )
-            personid = cursor.fetchone()["personid"]
-            cursor.execute(
-                """
-                insert into employee(hire_date, personid)
-                values (%s, %s)
-                """,
-                (hire_date, personid),
-            )
 
-def insert_client(dni:str, name:str, last_name:str, email:str, address:str, phone:str,ruc:str) -> None:
+            cursor.execute(""" select p.personid from person as p where p.dni = %s """,(dni,))
+            person=cursor.fetchone()
+            if person is None:
+                cursor.execute(
+                    """
+                    insert into person(dni,name, last_name, email, address, phone)
+                    values (%s,%s, %s,%s, %s,%s) returning personid
+                    """,
+                    (dni,name, last_name, email, address, phone),
+                )
+                personid = cursor.fetchone()["personid"]
+                cursor.execute(
+                    """
+                    insert into employee(hire_date, personid)
+                    values (%s, %s)
+                    """,
+                    (hire_date, personid),
+                )
+            else:
+                cursor.execute(""" insert into employee(hire_date, personid) values (%s, %s) """, (hire_date, person["personid"]))
+def list_active_employees() -> Iterator[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                insert into person(dni,name, last_name, email, address, phone)
-                values (%s,%s, %s,%s, %s,%s) returning personid
-                """,
-                (dni,name, last_name, email, address, phone),
-            )
-            personid = cursor.fetchone()["personid"]
-            cursor.execute(
-                """
-                insert into client(ruc, personid)
-                values (%s, %s)
-                """,
-                (ruc, personid),
-            )
+            cursor.execute("""select p.dni,p.name,p.last_name , p.email ,p.address,p.phone,p.status, e.empid ,e.hire_date as contratacion from person p , employee e where e.personid=p.personid and p.status <>'I'""")
+            yield from cursor.fetchall()
+
+def insert_client(dni:str, name:str, last_name:str, email:str, address:str, phone:str,ruc:str) -> int:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(""" select p.personid from person as p where p.dni = %s """,(dni,))
+            person=cursor.fetchone()
+            if person is None:
+                cursor.execute(
+                    """
+                    insert into person(dni,name, last_name, email, address, phone)
+                    values (%s,%s, %s,%s, %s,%s) returning personid
+                    """,
+                    (dni,name, last_name, email, address, phone),
+                )
+                personid = cursor.fetchone()["personid"]
+                cursor.execute(
+                    """
+                    insert into client(ruc, personid)
+                    values (%s, %s)
+                    returning clientid
+                    """,
+                    (ruc, personid),
+                )
+                return cursor.fetchone()["clientid"]
+            else: 
+                cursor.execute("""insert into client(ruc, personid)
+                                    values (%s, %s)
+                                    returning clientid
+                                    """,(ruc, person["personid"]),)
+                return cursor.fetchone()["clientid"]
 
 def list_active_clients() -> Iterator[dict]:
     with get_connection() as connection:
@@ -341,20 +363,20 @@ def deactivate_employee(empid: int) -> bool:
             return cursor.rowcount > 0
 
 
-def list_active_employees() -> Iterator[dict]:
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                select e.empid, p.personid, p.dni, p.name, p.last_name,
-                       p.email, p.phone
-                from employee e
-                join person p on p.personid = e.personid
-                where p.status <> 'I'
-                order by p.last_name, p.name, e.empid
-                """
-            )
-            yield from cursor.fetchall()
+# def list_active_employees() -> Iterator[dict]:
+#     with get_connection() as connection:
+#         with connection.cursor() as cursor:
+#             cursor.execute(
+#                 """
+#                 select e.empid, p.personid, p.dni, p.name, p.last_name,
+#                        p.email, p.phone
+#                 from employee e
+#                 join person p on p.personid = e.personid
+#                 where p.status <> 'I'
+#                 order by p.last_name, p.name, e.empid
+#                 """
+#             )
+#             yield from cursor.fetchall()
 
 
 def find_client(clientid: int) -> Optional[dict]:
@@ -435,7 +457,7 @@ def find_product_price(connection: psycopg.Connection, productid: int) -> Option
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            select productid, price::numeric as price
+            select productid, price::numeric as price, stock
             from product
             where productid = %s and status <> 'I'
             for update
@@ -443,6 +465,49 @@ def find_product_price(connection: psycopg.Connection, productid: int) -> Option
             (productid,),
         )
         return cursor.fetchone()
+
+
+def decrease_product_stock(
+    connection: psycopg.Connection, productid: int, quantity: int
+) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            update product
+            set stock = stock - %s
+            where productid = %s and status <> 'I' and stock >= %s
+            """,
+            (quantity, productid, quantity),
+        )
+        return cursor.rowcount > 0
+
+
+def get_invoice_for_update(
+    connection: psycopg.Connection, inv_heaid: int
+) -> Optional[dict]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            select inv_heaid, status
+            from invoice_header
+            where inv_heaid = %s
+            for update
+            """,
+            (inv_heaid,),
+        )
+        invoice = cursor.fetchone()
+        if invoice is None:
+            return None
+        cursor.execute(
+            """
+            select productid, quantity
+            from invoice_details
+            where inv_heaid = %s and productid is not null
+            """,
+            (inv_heaid,),
+        )
+        invoice["product_details"] = cursor.fetchall()
+        return invoice
 
 
 def insert_invoice_header(
@@ -508,8 +573,8 @@ def find_invoice(inv_heaid: int) -> Optional[dict]:
             cursor.execute(
                 """
                 select ih.inv_heaid, ih.code, ih.payment_method, ih.total::float8 as total,
-                       ih.status, ih.clientid, ih.appoid,
-                       p.name as client_name, p.last_name as client_last_name
+                       ih.status, ih.clientid, ih.appoid,  ih."date" ,
+                       p.name as client_name, p.last_name as client_last_name, p.email as client_email
                 from invoice_header ih
                 left join client c on c.clientid = ih.clientid
                 left join person p on p.personid = c.personid

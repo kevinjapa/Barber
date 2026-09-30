@@ -1,12 +1,20 @@
-from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from .billing_service import create_invoice as create_invoice_service
-from .database import (
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from pathlib import Path
+from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML
+from .services.billing_service import (
+    create_invoice as create_invoice_service,
+    mark_invoice_as_paid,
+)
+from .services.database_Service import (
     deactivate_client,
     deactivate_employee,
     deactivate_person,
@@ -43,13 +51,21 @@ from .database import (
     login,
 )
 
-from .models import (encriptar_contraseña, upload_img, delete_img)
+from .services.models_Service import (encriptar_contraseña, upload_img, delete_img)
+from.services.email_Service import send_email
 
 PERSON_NOT_FOUND = "Persona no encontrada"
 EMPLOYEE_NOT_FOUND = "Empleado no encontrado"
 CLIENT_NOT_FOUND = "Cliente no encontrado"
 
 app= FastAPI()
+baseDir=Path(__file__).parent.parent
+TEMPLATES_DIR = baseDir / "app/templates"
+ASSETS_DIR = baseDir / "app/assets"
+
+env = Environment(
+    loader=FileSystemLoader(TEMPLATES_DIR)
+)
 
 class ServiceCreate(BaseModel):
     name: str
@@ -271,11 +287,15 @@ def create_employee(employee: dict) -> dict[str, str]:
     insert_emloyee(employee["dni"], employee["name"], employee["last_name"], employee["email"], employee["address"], employee["phone"], employee["hire_date"])
     return {"status": "ok", "message": "Employee created successfully"}
 
+@app.get("/api/employees", status_code=status.HTTP_200_OK)
+def list_employees() -> list[dict]:
+    return list_active_employees()
+
 # Cliente 
 @app.post("/api/client", status_code=status.HTTP_201_CREATED)
-def create_client(client: dict) -> dict[str, str]:
-    insert_client(client["dni"], client["name"], client["last_name"], client["email"], client["address"], client["phone"], client["ruc"])
-    return {"status": "ok", "message": "Client created successfully"}
+def create_client(client: dict) -> dict[str, object]:
+    clientid = insert_client(client["dni"], client["name"], client["last_name"], client["email"], client["address"], client["phone"], client["ruc"])
+    return {"status": "ok", "message": "Client created successfully", "clientid": clientid}
 
 
 @app.get("/api/clients")
@@ -327,9 +347,9 @@ def disable_employee(empid: int):
     return {"status": "ok", "message": "Empleado inactivado correctamente"}
 
 
-@app.get("/api/employees")
-def get_employees():
-    return list_active_employees()
+# @app.get("/api/employees")
+# def get_employees():
+#     return list_active_employees()
 
 
 @app.get("/api/client/{clientid}")
@@ -391,6 +411,14 @@ def change_invoice_status(inv_heaid: int, invoice: dict):
         status_code = "D"
     else:
         status_code = "C"
+    if status_code == "P":
+        try:
+            mark_invoice_as_paid(inv_heaid)
+        except LookupError as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+        return {"status": "ok", "message": "Factura marcada como pagada correctamente"}
     if not update_invoice_status(inv_heaid, status_code):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
     return {"status": "ok", "message": "Estado de factura actualizado correctamente"}
@@ -454,3 +482,54 @@ def login_result(credentials: dict) -> dict[str, str]:
     return {
         "status": "ok","message": "Login successful","username": user["username"],"last_name": user["last_name"],"role": user["role"]
     }
+
+
+# send email 
+@app.post("/api/invoices/{invoice_id}/send-email")
+def send_invoice(invoice_id: int, background_tasks: BackgroundTasks):
+    invoice= get_invoice(invoice_id)
+    background_tasks.add_task(process_mail, invoice)
+    return {"status": "ok", "message": "Email sending in progress"}
+
+def process_mail(invoice):
+    pdf= generate_invoice_pdf(invoice)  # Generate PDF from invoice details
+    try:
+        send_email(recipient=invoice["client_email"],pdf_path=pdf,invoice_number=invoice["code"])
+    except Exception as e:
+        print(f"Error sending email: {e}")
+    finally:
+        Path(pdf).unlink(missing_ok=True)
+
+
+def generate_invoice_pdf(invoice: dict) -> str:
+    template = env.get_template("invoice.html")
+    logo=(ASSETS_DIR / "alvaberber_icon.png").as_uri()
+    html_content = template.render(invoice=invoice, logo=logo)
+    filename = f"/tmp/comprobante_{invoice['code']}.pdf"
+    HTML(string=html_content).write_pdf(filename)
+
+    return filename
+
+
+# def generate_invoice_pdf(invoice):
+#     filename = f"/tmp/comprobante_{invoice['id']}.pdf"
+
+#     pdf = canvas.Canvas(filename, pagesize=A4)
+
+#     pdf.drawString(50, 800, "ALVABARBER")
+#     pdf.drawString(50, 770, "COMPROBANTE DE SERVICIO")
+
+#     pdf.drawString(50, 730, f"N.º {invoice['id']}")
+#     pdf.drawString(50, 700, f"Cliente: {invoice['customer_name']}")
+
+#     pdf.drawString(50, 650, "Servicio")
+#     pdf.drawString(400, 650, "Precio")
+
+#     pdf.drawString(50, 620, invoice["service_name"])
+#     pdf.drawString(400, 620, f"${invoice['price']:.2f}")
+
+#     pdf.drawString(50, 570, f"TOTAL: ${invoice['total']:.2f}")
+
+#     pdf.save()
+
+#     return filename
