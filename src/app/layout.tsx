@@ -18,8 +18,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BarberHub | Gestión de barbería",
-  description: "Agenda y operación diaria para tu barbería.",
+  title: "AlvaBarber | Gestión de barbería",
+  description: "Operaciones Diarias para tu barbería.",
+  icons: {
+    icon: "/assets/alvaberber_icon.png",
+    shortcut: "/assets/alvaberber_icon.png",
+    apple: "/assets/alvaberber_icon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
