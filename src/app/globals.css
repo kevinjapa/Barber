@@ -123,6 +123,154 @@ button:disabled {
   background: linear-gradient(145deg, #d89058 0%, #b96f45 100%);
 }
 
+.booking-shell {
+  background:
+    radial-gradient(circle at 90% 8%, rgba(216, 144, 88, 0.18), transparent 23rem),
+    linear-gradient(135deg, #f8faf7 0%, #eef3ef 100%);
+}
+
+.booking-mark {
+  display: grid;
+  height: 2.5rem;
+  width: 2.5rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand-deep);
+  color: #fff;
+  font-family: var(--font-display), serif;
+  font-size: 1.35rem;
+}
+
+.booking-kicker {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.booking-card {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 45px rgba(36, 65, 56, 0.08);
+}
+
+.booking-icon-button {
+  height: 2.25rem;
+  width: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--brand);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.booking-icon-button:hover {
+  border-color: var(--brand);
+  background: var(--surface-muted);
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.calendar-day:hover:not(:disabled) {
+  background: #e5f0e9;
+  color: var(--brand-deep);
+}
+
+.calendar-day-selected {
+  background: var(--brand-deep);
+  color: #fff;
+  font-weight: 700;
+}
+
+.calendar-day-muted {
+  color: #c8d1ca;
+}
+
+.booking-label {
+  display: block;
+  color: var(--brand-deep);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.booking-field {
+  border: 1px solid #cfdad3;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-weight: 400;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.booking-field:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(29, 91, 79, 0.12);
+}
+
+.booking-time {
+  min-height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--brand-deep);
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.booking-time:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: #f0f8f2;
+}
+
+.booking-time-selected {
+  border-color: var(--brand-deep);
+  background: var(--brand-deep);
+  color: #fff;
+}
+
+.booking-time-booked {
+  cursor: not-allowed;
+  background: #f3f5f3;
+  color: #a7b2aa;
+  text-decoration: line-through;
+}
+
+.booking-time small {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.booking-submit {
+  border-radius: 0.5rem;
+  background: var(--brand-deep);
+  padding: 0.9rem 1.25rem;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.booking-submit:hover:not(:disabled) {
+  background: var(--brand);
+  transform: translateY(-1px);
+}
+
+.booking-submit:disabled {
+  opacity: 0.45;
+}
+
 @media (max-width: 1023px) {
   .mobile-nav {
     scrollbar-width: none;

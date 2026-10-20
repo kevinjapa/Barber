@@ -53,7 +53,14 @@ def _decrease_invoice_products(connection: Any, details: list[dict[str, Any]]) -
 
     for productid, quantity in quantities.items():
         if not decrease_product_stock(connection, productid, quantity):
-            raise ValueError(f"Stock insuficiente para el producto {productid}")
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "select name from product where productid = %s",
+                    (productid,),
+                )
+                product = cursor.fetchone()
+            product_name = product["name"] if product else f"#{productid}"
+            raise ValueError(f"Stock insuficiente para el producto {product_name}")
 
 
 def create_invoice(invoice: Any) -> dict[str, Any]:
@@ -88,7 +95,7 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
 
             if detail.productid is not None and item["stock"] < detail.quantity:
                 raise ValueError(
-                    f"Stock insuficiente para el producto {detail.productid}: "
+                    f"Stock insuficiente para el producto {item['name']}: "
                     f"disponibles {item['stock']}, solicitados {detail.quantity}"
                 )
 

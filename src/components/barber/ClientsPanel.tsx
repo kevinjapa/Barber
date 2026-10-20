@@ -49,6 +49,7 @@ export function ClientsPanel({
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [isRedeeming, setIsRedeeming] = useState<number | null>(null);
 
   const filteredClients = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -154,6 +155,29 @@ export function ClientsPanel({
     }
   }
 
+  async function handleRedeem(client: Client) {
+    if ((client.points ?? 0) < 10) return;
+    clearFeedback();
+    setIsRedeeming(client.clientid);
+    try {
+      await readApiResponse(
+        await fetch(`${apiUrl}/api/client/${client.clientid}/rewards/redeem`, {
+          method: "POST",
+        }),
+      );
+      setMessage(`Canje aplicado a ${client.name}: corte gratis por 10 puntos.`);
+      onChanged();
+    } catch (redeemError) {
+      setError(
+        redeemError instanceof Error
+          ? redeemError.message
+          : "No se pudo canjear la recompensa",
+      );
+    } finally {
+      setIsRedeeming(null);
+    }
+  }
+
   return (
     <section className="py-8">
       <div className="flex flex-col justify-between gap-5 border-b border-[#d9cec1] pb-6 sm:flex-row sm:items-end">
@@ -216,6 +240,9 @@ export function ClientsPanel({
                     <p className="mt-1 text-xs text-[#9b5b3b]">
                       RUC: {client.ruc}
                     </p>
+                    <p className="mt-2 text-xs font-semibold text-[#1d5b4f]">
+                      {client.points ?? 0} puntos · {client.completed_appointments ?? 0} visitas finalizadas
+                    </p>
                   </div>
                   <div className="flex gap-4 text-sm font-semibold sm:shrink-0">
                     <button
@@ -235,6 +262,16 @@ export function ClientsPanel({
                         ? "Inactivando..."
                         : "Inactivar"}
                     </button>
+                    {(client.points ?? 0) >= 10 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRedeem(client)}
+                        disabled={isRedeeming === client.clientid}
+                        className="text-[#1d5b4f] hover:text-[#153e38] disabled:opacity-50"
+                      >
+                        {isRedeeming === client.clientid ? "Canjeando..." : "Canjear corte"}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

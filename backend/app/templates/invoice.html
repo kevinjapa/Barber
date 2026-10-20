@@ -258,7 +258,7 @@
                     </div>
 
                     <div class="value">
-                        {{ invoice.client_name }}
+                        {{ invoice.client_name }} {{ invoice.client_last_name }}
                     </div>
                 </td>
 
@@ -371,6 +371,7 @@
                 <td class="total-value">
                     ${{ "%.2f"|format(invoice.total|float) }}
                 </td>
+
 
             </tr>
 

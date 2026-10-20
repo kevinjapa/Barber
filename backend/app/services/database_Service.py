@@ -25,6 +25,29 @@ class DatabaseSettings(BaseSettings):
 
 settings = DatabaseSettings()
 
+
+class AppointmentConflictError(Exception):
+    """Raised when an employee already has an appointment in the requested range."""
+
+
+class ClientDailyAppointmentError(Exception):
+    """Raised when a client already has an active appointment on that date."""
+
+
+def initialize_rewards() -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                create table if not exists customer_rewards (
+                    clientid integer primary key references client(clientid),
+                    points integer not null default 0 check (points >= 0),
+                    completed_appointments integer not null default 0,
+                    updated_at timestamp not null default current_timestamp
+                )
+                """
+            )
+
 def get_connection() -> psycopg.Connection:
     return psycopg.connect(
         host=settings.host,
@@ -130,6 +153,21 @@ def list_active_employees() -> Iterator[dict]:
             cursor.execute("""select p.dni,p.name,p.last_name , p.email ,p.address,p.phone,p.status, e.empid ,e.hire_date as contratacion from person p , employee e where e.personid=p.personid and p.status <>'I'""")
             yield from cursor.fetchall()
 
+
+def list_public_employees() -> Iterator[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select e.empid, p.name, p.last_name
+                from employee e
+                join person p on p.personid = e.personid
+                where p.status <> 'I'
+                order by p.last_name, p.name, e.empid
+                """
+            )
+            yield from cursor.fetchall()
+
 def insert_client(dni:str, name:str, last_name:str, email:str, address:str, phone:str,ruc:str) -> int:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -166,14 +204,33 @@ def list_active_clients() -> Iterator[dict]:
             cursor.execute(
                 """
                 select c.clientid, c.ruc, p.personid, p.dni, p.name, p.last_name,
-                       p.email, p.address, p.phone
+                       p.email, p.address, p.phone,
+                       coalesce(cr.points, 0) as points,
+                       coalesce(cr.completed_appointments, 0) as completed_appointments
                 from client c
                 join person p on p.personid = c.personid
+                left join customer_rewards cr on cr.clientid = c.clientid
                 where p.status <> 'I'
                 order by p.last_name, p.name, c.clientid
                 """
             )
             yield from cursor.fetchall()
+
+
+def find_client_by_dni(dni: str) -> Optional[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select c.clientid, c.ruc, p.personid, p.dni, p.name, p.last_name,
+                       p.email, p.address, p.phone
+                from client c
+                join person p on p.personid = c.personid
+                where p.dni = %s and p.status <> 'I'
+                """,
+                (dni,),
+            )
+            return cursor.fetchone()
 
 
 def list_products() -> Iterator[dict]:
@@ -457,7 +514,7 @@ def find_product_price(connection: psycopg.Connection, productid: int) -> Option
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            select productid, price::numeric as price, stock
+            select productid, name, price::numeric as price, stock
             from product
             where productid = %s and status <> 'I'
             for update
@@ -616,9 +673,56 @@ def update_invoice_status(inv_heaid: int, invoice_status: str) -> bool:
             return cursor.rowcount > 0
 
 # ---- Ingresar citas 
+def _appointment_conflicts(cursor, date: str, start_time: str, end_time: str, empid: int, appoid: Optional[int] = None) -> bool:
+    cursor.execute(
+        "select pg_advisory_xact_lock(hashtext(%s))",
+        (f"{empid}:{date}",),
+    )
+    query = """
+        select 1
+        from appointments
+        where empid = %s
+          and date = %s
+          and status in ('P', 'A')
+          and start_time < %s
+          and end_time > %s
+    """
+    params: list[object] = [empid, date, end_time, start_time]
+    if appoid is not None:
+        query += " and appoid <> %s"
+        params.append(appoid)
+    cursor.execute(query, params)
+    return cursor.fetchone() is not None
+
+
+def _client_has_appointment_on_date(cursor, date: str, clientid: int, appoid: Optional[int] = None) -> bool:
+    cursor.execute(
+        "select pg_advisory_xact_lock(hashtext(%s))",
+        (f"client:{clientid}:{date}",),
+    )
+    query = """
+        select 1
+        from appointments
+        where clientid = %s
+          and date = %s
+          and status in ('P', 'A')
+    """
+    params: list[object] = [clientid, date]
+    if appoid is not None:
+        query += " and appoid <> %s"
+        params.append(appoid)
+    cursor.execute(query, params)
+    return cursor.fetchone() is not None
+
+
 def insert_appointment(date:str, start_time:time,end_time:time, description:str,status:str, empid:int, clientid:int,)-> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            if status in ("P", "A"):
+                if _appointment_conflicts(cursor, date, start_time, end_time, empid):
+                    raise AppointmentConflictError
+                if _client_has_appointment_on_date(cursor, date, clientid):
+                    raise ClientDailyAppointmentError
             cursor.execute(
                 """
                 insert into appointments(date, start_time, end_time, description,status, empid, clientid)
@@ -652,6 +756,11 @@ def list_active_appointments() -> Iterator[dict]:
 def update_appointment(appoid: int, date: str, start_time: str, end_time: str, description: str, appointment_status: str, empid: int, clientid: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            if appointment_status in ("P", "A"):
+                if _appointment_conflicts(cursor, date, start_time, end_time, empid, appoid):
+                    raise AppointmentConflictError
+                if _client_has_appointment_on_date(cursor, date, clientid, appoid):
+                    raise ClientDailyAppointmentError
             cursor.execute(
                 """
                 update appointments
@@ -664,9 +773,97 @@ def update_appointment(appoid: int, date: str, start_time: str, end_time: str, d
             )
             return cursor.rowcount > 0
 
+
+def list_public_appointments() -> Iterator[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select date, start_time, end_time, empid
+                from appointments
+                where status in ('P', 'A')
+                order by date, start_time
+                """
+            )
+            yield from cursor.fetchall()
+
+
+def create_public_appointment(
+    date: str,
+    start_time: str,
+    end_time: str,
+    description: str,
+    empid: int,
+    dni: str,
+    name: str,
+    last_name: str,
+    email: str,
+    phone: str,
+    birth_date: Optional[str] = None,
+) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("select personid from person where dni = %s", (dni,))
+            person = cursor.fetchone()
+            if person is None:
+                cursor.execute(
+                    """
+                    insert into person(dni, name, last_name, email, address, phone)
+                    values (%s, %s, %s, %s, %s, %s)
+                    returning personid
+                    """,
+                    (dni, name, last_name, email, "", phone),
+                )
+                personid = cursor.fetchone()["personid"]
+            else:
+                personid = person["personid"]
+                cursor.execute(
+                    """
+                    update person
+                    set name = %s, last_name = %s, email = %s, phone = %s
+                    where personid = %s
+                    """,
+                    (name, last_name, email, phone, personid),
+                )
+
+            cursor.execute("select clientid from client where personid = %s", (personid,))
+            client = cursor.fetchone()
+            if client is None:
+                cursor.execute(
+                    """
+                    insert into client(ruc, personid)
+                    values (%s, %s)
+                    returning clientid
+                    """,
+                    (dni, personid),
+                )
+                clientid = cursor.fetchone()["clientid"]
+            else:
+                clientid = client["clientid"]
+
+            if _client_has_appointment_on_date(cursor, date, clientid):
+                raise ClientDailyAppointmentError
+            if _appointment_conflicts(cursor, date, start_time, end_time, empid):
+                raise AppointmentConflictError
+
+            cursor.execute(
+                """
+                insert into appointments(date, start_time, end_time, description, status, empid, clientid)
+                values (%s, %s, %s, %s, 'P', %s, %s)
+                """,
+                (date, start_time, end_time, description, empid, clientid),
+            )
+
 def update_appointment_status(appoid: int, appointment_status: str) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                "select clientid, status from appointments where appoid = %s for update",
+                (appoid,),
+            )
+            current = cursor.fetchone()
+            if current is None or current["status"] not in ("P", "A"):
+                return False
             cursor.execute(
                 """
                 update appointments
@@ -675,7 +872,58 @@ def update_appointment_status(appoid: int, appointment_status: str) -> bool:
                 """,
                 (appointment_status, appoid),
             )
-            return cursor.rowcount > 0
+            if cursor.rowcount == 0:
+                return False
+            if appointment_status == "F":
+                cursor.execute(
+                    """
+                    insert into customer_rewards (clientid, points, completed_appointments)
+                    values (%s, 1, 1)
+                    on conflict (clientid) do update
+                    set points = customer_rewards.points + 1,
+                        completed_appointments = customer_rewards.completed_appointments + 1,
+                        updated_at = current_timestamp
+                    """,
+                    (current["clientid"],),
+                )
+            return True
+
+
+def get_client_rewards(clientid: int) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select clientid, points, completed_appointments
+                from customer_rewards
+                where clientid = %s
+                """,
+                (clientid,),
+            )
+            reward = cursor.fetchone()
+            return reward or {
+                "clientid": clientid,
+                "points": 0,
+                "completed_appointments": 0,
+            }
+
+
+def redeem_client_reward(clientid: int) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                update customer_rewards
+                set points = points - 10, updated_at = current_timestamp
+                where clientid = %s and points >= 10
+                returning clientid, points, completed_appointments
+                """,
+                (clientid,),
+            )
+            reward = cursor.fetchone()
+            if reward is None:
+                raise ValueError("El cliente necesita al menos 10 puntos para canjear un corte gratis")
+            return reward
 
 
 def deactivate_appointment(appoid: int) -> bool:

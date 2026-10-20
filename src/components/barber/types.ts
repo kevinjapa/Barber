@@ -16,6 +16,8 @@ export type Client = {
   address: string;
   phone: string;
   ruc: string;
+  points?: number;
+  completed_appointments?: number;
 };
 
 export type Employee = {

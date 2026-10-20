@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, status, UploadFile, File, Form, BackgroundTasks
+from collections import defaultdict
+from time import monotonic
+from fastapi import FastAPI, HTTPException, Request, status, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -48,6 +50,15 @@ from .services.database_Service import (
     update_product,
     update_service,
     deactivate_appointment,
+    create_public_appointment,
+    list_public_appointments,
+    list_public_employees,
+    AppointmentConflictError,
+    ClientDailyAppointmentError,
+    find_client_by_dni,
+    get_client_rewards,
+    initialize_rewards,
+    redeem_client_reward,
     login,
 )
 
@@ -133,6 +144,33 @@ class InvoiceCreate(BaseModel):
     appoid: Optional[int] = Field(default=None, gt=0)
     details: list[InvoiceDetailCreate] = Field(min_length=1)
 
+
+class PublicAppointmentCreate(BaseModel):
+    date: str = Field(min_length=10, max_length=10)
+    start_time: str = Field(min_length=5, max_length=5)
+    end_time: str = Field(min_length=5, max_length=5)
+    description: str = Field(default="", max_length=500)
+    empid: int = Field(gt=0)
+    dni: str = Field(min_length=5, max_length=20)
+    name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    email: str = Field(min_length=5, max_length=160)
+    phone: str = Field(min_length=7, max_length=30)
+    birth_date: Optional[str] = Field(default=None, max_length=10)
+    privacy_consent: bool
+    marketing_consent: bool = False
+
+
+class PublicClientCreate(BaseModel):
+    dni: str = Field(min_length=5, max_length=20)
+    name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    email: str = Field(min_length=5, max_length=160)
+    phone: str = Field(min_length=7, max_length=30)
+    birth_date: Optional[str] = Field(default=None, max_length=10)
+    privacy_consent: bool
+    marketing_consent: bool = False
+
 app = FastAPI(title="Barber API", version="0.1.0")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
@@ -145,11 +183,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_public_request_log: dict[str, list[float]] = defaultdict(list)
+PUBLIC_RATE_LIMIT = 30
+PUBLIC_RATE_WINDOW_SECONDS = 60
+
+
+@app.middleware("http")
+async def public_rate_limit(request: Request, call_next):
+    if request.url.path.startswith("/api/public/"):
+        client_ip = request.client.host if request.client else "unknown"
+        now = monotonic()
+        recent_requests = [
+            timestamp
+            for timestamp in _public_request_log[client_ip]
+            if now - timestamp < PUBLIC_RATE_WINDOW_SECONDS
+        ]
+        if len(recent_requests) >= PUBLIC_RATE_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demasiadas solicitudes. Intenta nuevamente en un minuto.",
+            )
+        recent_requests.append(now)
+        _public_request_log[client_ip] = recent_requests
+    return await call_next(request)
+
 
 @app.on_event("startup")
 def startup() -> None:
-    # initialize_database()
-    pass
+    initialize_rewards()
 
 
 # @app.get("/api/health")
@@ -303,6 +364,49 @@ def list_clients():
     return list_active_clients()
 
 
+@app.get("/api/public/client/{dni}")
+def get_public_client_by_dni(dni: str):
+    client = find_client_by_dni(dni)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no registrado")
+    return client
+
+
+@app.post("/api/public/client", status_code=status.HTTP_201_CREATED)
+def create_public_client(client: PublicClientCreate):
+    if not client.privacy_consent:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Debes aceptar el aviso de privacidad")
+    existing = find_client_by_dni(client.dni)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un cliente registrado con esa cédula",
+        )
+    clientid = insert_client(
+        client.dni,
+        client.name,
+        client.last_name,
+        client.email,
+        "",
+        client.phone,
+        client.dni,
+    )
+    return {"status": "ok", "clientid": clientid}
+
+
+@app.get("/api/client/{clientid}/rewards")
+def get_rewards(clientid: int):
+    return get_client_rewards(clientid)
+
+
+@app.post("/api/client/{clientid}/rewards/redeem")
+def redeem_reward(clientid: int):
+    try:
+        return redeem_client_reward(clientid)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+
 @app.get("/api/person/{personid}")
 def get_person(personid: int):
     person = find_person(personid)
@@ -429,15 +533,57 @@ def get_appointments():
     return list_active_appointments()
 
 
+@app.get("/api/public/appointments")
+def get_public_appointments():
+    return list_public_appointments()
+
+
+@app.get("/api/public/employees")
+def get_public_employees():
+    return list_public_employees()
+
+
+@app.post("/api/public/appointment", status_code=status.HTTP_201_CREATED)
+def create_public_booking(appointment: PublicAppointmentCreate):
+    if not appointment.privacy_consent:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Debes aceptar el aviso de privacidad")
+    if appointment.start_time >= appointment.end_time:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La hora de fin debe ser posterior al inicio")
+    try:
+        appointment_data = appointment.model_dump(
+            exclude={"privacy_consent", "marketing_consent"}
+        )
+        create_public_appointment(**appointment_data)
+    except ClientDailyAppointmentError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya tienes una cita registrada para ese día. Si deseas modificarla, solicita el cambio al personal de la barbería.",
+        ) from error
+    except AppointmentConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ese horario ya está ocupado") from error
+    return {"status": "ok", "message": "Solicitud de cita enviada correctamente"}
+
+
 @app.post("/api/appointment", status_code=status.HTTP_201_CREATED)
 def create_appointment(appointment: dict) -> dict[str, str]:
-    insert_appointment(appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"])
+    try:
+        insert_appointment(appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"])
+    except ClientDailyAppointmentError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El cliente ya tiene una cita registrada para ese día.") from error
+    except AppointmentConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ese horario ya está ocupado") from error
     return {"status": "ok", "message": "Appointment created successfully"}
 
 
 @app.put("/api/appointment/{appoid}")
 def edit_appointment(appoid: int, appointment: dict):
-    if not update_appointment(appoid, appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"]):
+    try:
+        updated = update_appointment(appoid, appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"])
+    except ClientDailyAppointmentError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El cliente ya tiene otra cita registrada para ese día.") from error
+    except AppointmentConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ese horario ya está ocupado") from error
+    if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cita no encontrada")
     return {"status": "ok", "message": "Cita actualizada correctamente"}
 
@@ -504,6 +650,7 @@ def process_mail(invoice):
 def generate_invoice_pdf(invoice: dict) -> str:
     template = env.get_template("invoice.html")
     logo=(ASSETS_DIR / "alvaberber_icon.png").as_uri()
+    print(invoice)
     html_content = template.render(invoice=invoice, logo=logo)
     filename = f"/tmp/comprobante_{invoice['code']}.pdf"
     HTML(string=html_content).write_pdf(filename)
