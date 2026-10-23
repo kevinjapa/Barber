@@ -15,14 +15,23 @@ type AppointmentForm = {
 type AppointmentsPanelProps = {
   apiUrl: string;
   currentEmployeeId?: number;
+  currentUserId?: number;
   appointments: Appointment[];
   clients: Client[];
   employees: Employee[];
   onChanged: () => void;
 };
+type AppointmentView = "list" | "create";
+
+function localDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 const emptyForm: AppointmentForm = {
-  date: new Date().toISOString().slice(0, 10),
+  date: localDateString(new Date()),
   start_time: "09:00",
   end_time: "10:00",
   description: "",
@@ -52,6 +61,7 @@ function formatTime(value: string) {
 export function AppointmentsPanel({
   apiUrl,
   currentEmployeeId,
+  currentUserId,
   appointments,
   clients,
   employees,
@@ -65,23 +75,35 @@ export function AppointmentsPanel({
     useState<Appointment | null>(null);
   const [selectedAppointment, setSelectedAppointment] =
     useState<Appointment | null>(null);
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState(
+    () => localDateString(new Date()),
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [appointmentView, setAppointmentView] =
+    useState<AppointmentView>("list");
 
-  const filteredAppointments = useMemo(
-    () =>
-      appointments.filter(
+  const filteredAppointments = useMemo(() => {
+    return appointments
+      .filter(
         (appointment) =>
           (!dateFilter || appointment.date.slice(0, 10) === dateFilter) &&
           (statusFilter === "all" || appointment.status === statusFilter),
-      ),
-    [appointments, dateFilter, statusFilter],
-  );
+      )
+      .sort((first, second) => {
+        const firstUnassigned = first.empid == null ? 0 : 1;
+        const secondUnassigned = second.empid == null ? 0 : 1;
+        if (firstUnassigned !== secondUnassigned)
+          return firstUnassigned - secondUnassigned;
+        return `${first.date}${first.start_time}`.localeCompare(
+          `${second.date}${second.start_time}`,
+        );
+      });
+  }, [appointments, dateFilter, statusFilter]);
 
   function updateField(field: keyof AppointmentForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -92,7 +114,15 @@ export function AppointmentsPanel({
     setMessage("");
   }
 
+  function canManageAppointment(appointment: Appointment) {
+    return (
+      appointment.empid == null ||
+      (currentEmployeeId != null && appointment.empid === currentEmployeeId)
+    );
+  }
+
   function startEditing(appointment: Appointment) {
+    if (!canManageAppointment(appointment)) return;
     clearFeedback();
     setEditingAppointment(appointment);
     setSelectedAppointment(appointment);
@@ -102,13 +132,14 @@ export function AppointmentsPanel({
       end_time: formatTime(appointment.end_time),
       description: appointment.description ?? "",
       status: appointment.status,
-      empid: String(appointment.empid),
+      empid: appointment.empid == null ? "" : String(appointment.empid),
       clientid: String(appointment.clientid),
     });
   }
 
   async function handleStatusChange(nextStatus: "A" | "F") {
     if (!selectedAppointment || selectedAppointment.status === "F") return;
+    if (!canManageAppointment(selectedAppointment)) return;
     clearFeedback();
     setIsUpdatingStatus(true);
     try {
@@ -118,7 +149,7 @@ export function AppointmentsPanel({
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: nextStatus }),
+            body: JSON.stringify({ status: nextStatus, user_id: currentUserId }),
           },
         ),
       );
@@ -157,6 +188,7 @@ export function AppointmentsPanel({
         ...form,
         empid: Number(form.empid),
         clientid: Number(form.clientid),
+        user_id: currentUserId,
       };
       const response = await fetch(
         editingAppointment
@@ -189,6 +221,7 @@ export function AppointmentsPanel({
 
   async function handleDelete(appointment: Appointment) {
     if (appointment.status === "F") return;
+    if (!canManageAppointment(appointment)) return;
     if (
       !window.confirm(
         `¿Cancelar la cita de ${appointment.client_name} ${appointment.client_last_name}?`,
@@ -201,6 +234,8 @@ export function AppointmentsPanel({
       await readApiResponse(
         await fetch(`${apiUrl}/api/appointment/${appointment.appoid}`, {
           method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: currentUserId }),
         }),
       );
       setMessage("Cita cancelada correctamente.");
@@ -245,7 +280,29 @@ export function AppointmentsPanel({
         </p>
       )}
       <div className="mt-8 grid gap-8 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="panel-surface border p-6">
+        <div className="panel-surface border p-6 lg:col-span-2">
+          <div className="mb-6 flex gap-2 border-b border-[#d9cec1]">
+            <button
+              type="button"
+              onClick={() => setAppointmentView("list")}
+              className={`px-4 py-3 text-sm font-semibold ${appointmentView === "list" ? "border-b-2 border-[#c8754e]" : "text-[#75675d]"}`}
+            >
+              Citas
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAppointmentView("create");
+                setSelectedAppointment(null);
+                cancelEditing();
+              }}
+              className={`px-4 py-3 text-sm font-semibold ${appointmentView === "create" ? "border-b-2 border-[#c8754e]" : "text-[#75675d]"}`}
+            >
+              Nueva cita
+            </button>
+          </div>
+          {appointmentView === "list" && (
+          <>
           <div className="flex flex-col justify-between gap-4 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-center">
             <h3 className="font-serif text-2xl">Agenda</h3>
             <div className="flex flex-wrap gap-3">
@@ -269,52 +326,6 @@ export function AppointmentsPanel({
               </select>
             </div>
           </div>
-          {selectedAppointment && (
-            <div className="mt-4 border border-[#d9cec1] bg-[#fffaf4] p-5">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
-                    Cita seleccionada
-                  </p>
-                  <p className="mt-1 font-semibold">
-                    {selectedAppointment.client_name}{" "}
-                    {selectedAppointment.client_last_name}
-                  </p>
-                  <p className="mt-1 text-sm text-[#75675d]">
-                    Estado actual:{" "}
-                    {statusLabels[selectedAppointment.status] ??
-                      selectedAppointment.status}
-                  </p>
-                </div>
-                {selectedAppointment.status !== "F" ? (
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={
-                        isUpdatingStatus || selectedAppointment.status === "A"
-                      }
-                      onClick={() => void handleStatusChange("A")}
-                      className="border border-[#cbbdaf] px-3 py-2 text-sm font-semibold text-[#9b5b3b] disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Confirmar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isUpdatingStatus}
-                      onClick={() => void handleStatusChange("F")}
-                      className="bg-[#47704b] px-3 py-2 text-sm font-semibold text-[#fffaf4] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Finalizar
-                    </button>
-                  </div>
-                ) : (
-                  <span className="text-sm font-semibold text-[#47704b]">
-                    Finalizada · no se puede cancelar
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
           {filteredAppointments.length === 0 ? (
             <p className="py-8 text-[#75675d]">
               No hay citas para los filtros seleccionados.
@@ -325,7 +336,10 @@ export function AppointmentsPanel({
                 <div
                   key={appointment.appoid}
                   className={`flex cursor-pointer flex-col gap-4 py-5 transition sm:flex-row sm:items-center sm:justify-between ${selectedAppointment?.appoid === appointment.appoid ? "bg-[#f4efe8] px-4" : ""}`}
-                  onClick={() => setSelectedAppointment(appointment)}
+                  onClick={() => {
+                    clearFeedback();
+                    setSelectedAppointment(appointment);
+                  }}
                 >
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -342,8 +356,10 @@ export function AppointmentsPanel({
                       {formatTime(appointment.end_time)}
                     </p>
                     <p className="mt-1 text-xs text-[#75675d]">
-                      Atiende: {appointment.employee_name}{" "}
-                      {appointment.employee_last_name}
+                      Atiende:{" "}
+                      {appointment.employee_name
+                        ? `${appointment.employee_name} ${appointment.employee_last_name}`
+                        : "Sin asignar; pendiente de confirmación"}
                       {appointment.description
                         ? ` · ${appointment.description}`
                         : ""}
@@ -352,11 +368,12 @@ export function AppointmentsPanel({
                   <div className="flex gap-4 text-sm font-semibold">
                     <button
                       type="button"
+                      disabled={!canManageAppointment(appointment)}
                       onClick={(event) => {
                         event.stopPropagation();
                         startEditing(appointment);
                       }}
-                      className="text-[#9b5b3b] hover:text-[#2c2520]"
+                      className="text-[#9b5b3b] hover:text-[#2c2520] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Editar
                     </button>
@@ -368,7 +385,7 @@ export function AppointmentsPanel({
                           void handleDelete(appointment);
                         }}
                         disabled={isDeleting === appointment.appoid}
-                        className="text-[#9b3d32] hover:text-[#6e2b25] disabled:opacity-50"
+                        className="text-[#9b3d32] hover:text-[#6e2b25] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {isDeleting === appointment.appoid
                           ? "Cancelando..."
@@ -380,10 +397,13 @@ export function AppointmentsPanel({
               ))}
             </div>
           )}
+          </>
+          )}
         </div>
+        {appointmentView === "create" && (
         <form
           onSubmit={handleSubmit}
-          className="panel-surface h-fit border p-6"
+          className="panel-surface h-fit border p-6 lg:col-span-2"
         >
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
             {editingAppointment ? "Editar cita" : "Nueva cita"}
@@ -509,7 +529,119 @@ export function AppointmentsPanel({
             )}
           </div>
         </form>
+        )}
       </div>
+      {selectedAppointment && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-[#153e38]/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="appointment-dialog-title"
+          onClick={() => setSelectedAppointment(null)}
+        >
+          <div
+            className="panel-surface max-h-[90vh] w-full max-w-2xl overflow-y-auto border p-6 shadow-2xl sm:p-8"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-col justify-between gap-4 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-start">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
+                  Detalle de cita
+                </p>
+                <h3 id="appointment-dialog-title" className="mt-2 font-serif text-3xl">
+                  {selectedAppointment.client_name}{" "}
+                  {selectedAppointment.client_last_name}
+                </h3>
+                <p className="mt-2 text-sm text-[#75675d]">
+                  Estado:{" "}
+                  {statusLabels[selectedAppointment.status] ??
+                    selectedAppointment.status}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-serif text-2xl">
+                  {formatTime(selectedAppointment.start_time)} -{" "}
+                  {formatTime(selectedAppointment.end_time)}
+                </p>
+                <p className="mt-1 text-sm text-[#75675d]">
+                  {selectedAppointment.date.slice(0, 10)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
+              <p>
+                <strong>Barbero:</strong>{" "}
+                {selectedAppointment.employee_name
+                  ? `${selectedAppointment.employee_name} ${selectedAppointment.employee_last_name}`
+                  : "Sin asignar"}
+              </p>
+            </div>
+            <div className="mt-5 border-t border-[#e6dbcf] pt-5">
+              <p className="text-sm font-semibold">Descripción</p>
+              <p className="mt-2 text-sm text-[#75675d]">
+                {selectedAppointment.description || "Sin descripción"}
+              </p>
+            </div>
+            <div className="mt-7 flex flex-col-reverse gap-3 border-t border-[#e6dbcf] pt-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAppointment(null)}
+                className="action-secondary px-4 py-2 text-sm font-semibold"
+              >
+                Cerrar
+              </button>
+              {selectedAppointment.status !== "F" && (
+                <button
+                  type="button"
+                  disabled={
+                    !canManageAppointment(selectedAppointment) ||
+                    isDeleting === selectedAppointment.appoid
+                  }
+                  onClick={() => void handleDelete(selectedAppointment)}
+                  className="border border-[#e5b8ae] px-4 py-2 text-sm font-semibold text-[#9b3d32] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Cancelar cita
+                </button>
+              )}
+              {selectedAppointment.status !== "F" && (
+                <button
+                  type="button"
+                  disabled={
+                    isUpdatingStatus ||
+                    selectedAppointment.status === "A" ||
+                    !canManageAppointment(selectedAppointment)
+                  }
+                  onClick={() => void handleStatusChange("A")}
+                  className="border border-[#cbbdaf] px-4 py-2 text-sm font-semibold text-[#9b5b3b] disabled:opacity-50"
+                >
+                  {isUpdatingStatus ? "Guardando..." : "Confirmar"}
+                </button>
+              )}
+              {selectedAppointment.status === "A" && (
+                <button
+                  type="button"
+                  disabled={
+                    isUpdatingStatus ||
+                    !canManageAppointment(selectedAppointment)
+                  }
+                  onClick={() => void handleStatusChange("F")}
+                  className="bg-[#47704b] px-4 py-2 text-sm font-semibold text-[#fffaf4] disabled:opacity-50"
+                >
+                  Finalizar
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!canManageAppointment(selectedAppointment)}
+                onClick={() => startEditing(selectedAppointment)}
+                className="action-primary px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Editar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

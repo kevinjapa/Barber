@@ -1,15 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f7f4;
-  --foreground: #1f2925;
-  --ink-soft: #65716b;
-  --line: #dce3dd;
+  --background: #f4f5f3;
+  --foreground: #202725;
+  --ink-soft: #66736d;
+  --line: #d9dfdc;
   --surface: #ffffff;
-  --surface-muted: #eef3ef;
-  --brand: #1d5b4f;
-  --brand-deep: #153e38;
-  --accent: #d89058;
+  --surface-muted: #edf1ee;
+  --brand: #1f6659;
+  --brand-deep: #153f38;
+  --accent: #b97848;
+  color-scheme: light;
+}
+
+:root.dark {
+  --background: #121716;
+  --foreground: #edf2ee;
+  --ink-soft: #a4b1aa;
+  --line: #303b37;
+  --surface: #1c2421;
+  --surface-muted: #26322e;
+  --brand: #73b6a2;
+  --brand-deep: #a0d0bc;
+  --accent: #d19a67;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -58,9 +72,16 @@ button:disabled {
 }
 
 .panel-surface {
+  border-radius: 1.25rem;
   border-color: var(--line);
   background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 12px 32px rgba(36, 65, 56, 0.06);
+  box-shadow: 0 18px 45px rgba(36, 65, 56, 0.08);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.panel-surface:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  box-shadow: 0 22px 52px rgba(36, 65, 56, 0.11);
 }
 
 .panel-kicker {
@@ -75,7 +96,7 @@ button:disabled {
 
 .field-control {
   border: 1px solid #cfdad3;
-  border-radius: 0.5rem;
+  border-radius: 0.65rem;
   background: rgba(255, 255, 255, 0.72);
   color: var(--foreground);
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
@@ -89,7 +110,7 @@ button:disabled {
 }
 
 .action-primary {
-  border-radius: 0.5rem;
+  border-radius: 0.65rem;
   background: var(--brand-deep);
   color: #fff;
   transition: background 160ms ease, transform 160ms ease;
@@ -102,7 +123,7 @@ button:disabled {
 
 .action-secondary {
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0.65rem;
   color: var(--ink-soft);
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
 }
@@ -115,12 +136,479 @@ button:disabled {
 
 .login-shell {
   background:
-    radial-gradient(circle at 10% 15%, rgba(216, 144, 88, 0.28), transparent 18rem),
-    linear-gradient(135deg, #153e38 0%, #0d2725 100%);
+    radial-gradient(circle at 10% 15%, rgba(185, 120, 72, 0.25), transparent 20rem),
+    linear-gradient(135deg, #183e37 0%, #0e211f 100%);
 }
 
 .login-brand {
-  background: linear-gradient(145deg, #d89058 0%, #b96f45 100%);
+  background: linear-gradient(145deg, #215d51 0%, #153e38 100%);
+}
+
+.login-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+}
+
+.login-brand-glow {
+  position: absolute;
+  right: -5rem;
+  top: -5rem;
+  height: 17rem;
+  width: 17rem;
+  border-radius: 999px;
+  background: rgba(185, 120, 72, 0.22);
+  filter: blur(2px);
+}
+
+.login-logo {
+  position: relative;
+  display: grid;
+  height: 2.5rem;
+  width: 2.5rem;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0.75rem;
+  color: #e8c39e;
+  font-family: var(--font-display), serif;
+  font-size: 1.35rem;
+}
+
+.login-eyebrow {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.login-form {
+  background: var(--surface);
+}
+
+.login-muted {
+  color: var(--ink-soft);
+}
+
+.login-label {
+  color: var(--foreground);
+}
+
+.login-input {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--surface-muted);
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.login-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px rgba(185, 120, 72, 0.14);
+}
+
+.login-error {
+  border: 1px solid #d89083;
+  background: #fff1ee;
+  color: #98483d;
+}
+
+.login-submit {
+  border-radius: 0.65rem;
+  background: var(--accent);
+  color: #fffaf4;
+  transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.login-submit:hover:not(:disabled) {
+  background: #9e623a;
+  box-shadow: 0 8px 20px rgba(185, 120, 72, 0.22);
+  transform: translateY(-1px);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.45rem 0.75rem;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  background: var(--surface-muted);
+}
+
+.booking-shell {
+  background:
+    radial-gradient(circle at 90% 8%, rgba(216, 144, 88, 0.18), transparent 23rem),
+    linear-gradient(135deg, #f8faf7 0%, #eef3ef 100%);
+}
+
+.dark .booking-shell {
+  background:
+    radial-gradient(circle at 90% 8%, rgba(185, 120, 72, 0.16), transparent 23rem),
+    linear-gradient(135deg, #151c1a 0%, #101513 100%);
+}
+
+.booking-mark {
+  display: grid;
+  height: 2.5rem;
+  width: 2.5rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand-deep);
+  color: #fff;
+  font-family: var(--font-display), serif;
+  font-size: 1.35rem;
+}
+
+.booking-kicker {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.booking-card {
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 45px rgba(36, 65, 56, 0.08);
+}
+
+.dark .booking-card,
+.dark .panel-surface {
+  background: rgba(28, 36, 33, 0.94);
+  border-color: var(--line);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.2);
+}
+
+.dark .panel-surface:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.28);
+}
+
+.app-shell [class~="border"][class~="p-4"],
+.app-shell [class~="border"][class~="p-5"],
+.app-shell [class~="border"][class~="p-6"] {
+  border-radius: 1rem;
+}
+
+.app-shell button {
+  border-radius: 0.65rem;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.app-shell button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.panel-sidebar button {
+  transform: none;
+}
+
+.panel-sidebar button:hover:not(:disabled) {
+  transform: translateX(2px);
+}
+
+.mobile-nav button {
+  border-radius: 0.55rem;
+  transform: none;
+}
+
+.mobile-nav button:hover:not(:disabled) {
+  transform: none;
+}
+
+.dark .booking-field,
+.dark .field-control {
+  border-color: var(--line);
+  background: #202a26;
+  color: var(--foreground);
+}
+
+.dark .booking-field:focus,
+.dark .field-control:focus {
+  background: #26322e;
+}
+
+.dark .booking-label,
+.dark .panel-title {
+  color: var(--foreground);
+}
+
+.dark .calendar-day {
+  color: var(--foreground);
+}
+
+.dark .calendar-day-muted {
+  color: #53615b;
+}
+
+.dark .booking-time {
+  border-color: var(--line);
+  color: var(--foreground);
+  background: #202a26;
+}
+
+.dark .booking-time-booked {
+  background: #18201d;
+  color: #65736b;
+}
+
+.dark .login-error {
+  background: #3a2422;
+  color: #f2b6a9;
+}
+
+.dark .app-shell {
+  color: var(--foreground);
+  background:
+    radial-gradient(circle at 82% 0%, rgba(185, 120, 72, 0.12), transparent 24rem),
+    linear-gradient(135deg, #151c1a 0%, #101513 100%);
+}
+
+.dark .panel-sidebar {
+  border-color: #315b51;
+  background: linear-gradient(160deg, #173d36 0%, #0d2522 100%);
+}
+
+.dark .mobile-nav {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.dark [class~="text-[#1f2925]"],
+.dark [class~="text-[#2c2520]"],
+.dark [class~="text-[#153e38]"],
+.dark [class~="text-[#1d5b4f]"],
+.dark [class~="text-[#47704b]"],
+.dark [class~="text-[#9b5b3b]"],
+.dark [class~="text-[#9b3d32]"],
+.dark [class~="text-[#9b3b32]"],
+.dark [class~="text-[#75675d]"],
+.dark [class~="text-[#65716b]"],
+.dark [class~="text-[#718078]"],
+.dark [class~="text-[#8a968f]"] {
+  color: var(--foreground) !important;
+}
+
+.dark [class~="text-[#65716b]"],
+.dark [class~="text-[#75675d]"],
+.dark [class~="text-[#718078]"],
+.dark [class~="text-[#8a968f]"] {
+  color: var(--ink-soft) !important;
+}
+
+.dark [class~="text-[#9b5b3b]"],
+.dark [class~="text-[#b96f45]"],
+.dark [class~="text-[#9b3d32]"] {
+  color: var(--accent) !important;
+}
+
+.dark [class~="text-[#47704b]"] {
+  color: #8bc9a2 !important;
+}
+
+.dark [class~="border-[#dce3dd]"],
+.dark [class~="border-[#d9cec1]"],
+.dark [class~="border-[#e6dbcf]"],
+.dark [class~="border-[#e3e9e4]"],
+.dark [class~="border-[#cbbdaf]"],
+.dark [class~="border-[#cfdad3]"],
+.dark [class~="border-[#b8d0b9]"],
+.dark [class~="border-[#b8d0c4]"] {
+  border-color: var(--line) !important;
+}
+
+.dark [class~="divide-[#e6dbcf]"] > :not([hidden]) ~ :not([hidden]),
+.dark [class~="divide-[#e3e9e4]"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--line) !important;
+}
+
+.dark [class~="bg-white"],
+.dark [class~="bg-[#ffffff]"] {
+  background-color: var(--surface) !important;
+}
+
+.dark [class~="bg-[#fffaf4]"],
+.dark [class~="bg-[#f4efe8]"],
+.dark [class~="bg-[#eef3ef]"],
+.dark [class~="bg-[#f1f6f2]"],
+.dark [class~="bg-[#f3f5f3]"] {
+  background-color: var(--surface-muted) !important;
+}
+
+.dark [class~="bg-[#f2faf2]"] {
+  background-color: #1b3328 !important;
+}
+
+.dark [class~="bg-[#fff4f1]"] {
+  background-color: #3a2422 !important;
+}
+
+.dark [class~="bg-[#153e38]"],
+.dark [class~="bg-[#1d5b4f]"],
+.dark [class~="bg-[#47704b]"] {
+  color: #f5faf7 !important;
+}
+
+.dark [class~="hover\\:bg-[#f1f6f2]"]:hover,
+.dark [class~="hover\\:bg-[#eef3ef]"]:hover {
+  background-color: var(--surface-muted) !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
+
+.dark option {
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+@media (max-width: 640px) {
+  .login-card {
+    border-radius: 1rem;
+  }
+
+  .login-brand {
+    min-height: 18rem;
+  }
+}
+
+.booking-icon-button {
+  height: 2.25rem;
+  width: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--brand);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.booking-icon-button:hover {
+  border-color: var(--brand);
+  background: var(--surface-muted);
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.calendar-day:hover:not(:disabled) {
+  background: #e5f0e9;
+  color: var(--brand-deep);
+}
+
+.calendar-day-selected {
+  background: var(--brand-deep);
+  color: #fff;
+  font-weight: 700;
+}
+
+.calendar-day-muted {
+  color: #c8d1ca;
+}
+
+.booking-label {
+  display: block;
+  color: var(--brand-deep);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.booking-field {
+  border: 1px solid #cfdad3;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-weight: 400;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.booking-field:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(29, 91, 79, 0.12);
+}
+
+.booking-time {
+  min-height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--brand-deep);
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.booking-time:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: #f0f8f2;
+}
+
+.booking-time-selected {
+  border-color: var(--brand-deep);
+  background: var(--brand-deep);
+  color: #fff;
+}
+
+.booking-time-booked {
+  cursor: not-allowed;
+  background: #f3f5f3;
+  color: #a7b2aa;
+  text-decoration: line-through;
+}
+
+.booking-time small {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.booking-submit {
+  border-radius: 0.5rem;
+  background: var(--brand-deep);
+  padding: 0.9rem 1.25rem;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.booking-submit:hover:not(:disabled) {
+  background: var(--brand);
+  transform: translateY(-1px);
+}
+
+.booking-submit:disabled {
+  opacity: 0.45;
 }
 
 @media (max-width: 1023px) {

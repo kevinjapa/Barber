@@ -1,9 +1,11 @@
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-from .database import (
+from .database_Service import (
+    decrease_product_stock,
     find_product_price,
     find_service_price,
+    get_invoice_for_update,
     get_connection,
     insert_invoice_detail,
     insert_invoice_header,
@@ -42,6 +44,25 @@ def _get_code(value: str, codes: dict[str, str], field_name: str) -> str:
     raise ValueError(f"{field_name} no válido: use un valor soportado")
 
 
+def _decrease_invoice_products(connection: Any, details: list[dict[str, Any]]) -> None:
+    quantities: dict[int, int] = {}
+    for detail in details:
+        if detail["productid"] is not None:
+            productid = detail["productid"]
+            quantities[productid] = quantities.get(productid, 0) + detail["quantity"]
+
+    for productid, quantity in quantities.items():
+        if not decrease_product_stock(connection, productid, quantity):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "select name from product where productid = %s",
+                    (productid,),
+                )
+                product = cursor.fetchone()
+            product_name = product["name"] if product else f"#{productid}"
+            raise ValueError(f"Stock insuficiente para el producto {product_name}")
+
+
 def create_invoice(invoice: Any) -> dict[str, Any]:
     if not invoice.details:
         raise ValueError("La factura debe tener al menos un detalle")
@@ -72,6 +93,12 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
                 item_type = "servicio" if detail.serviceid is not None else "producto"
                 raise ValueError(f"El {item_type} indicado no existe o no está disponible")
 
+            if detail.productid is not None and item["stock"] < detail.quantity:
+                raise ValueError(
+                    f"Stock insuficiente para el producto {item['name']}: "
+                    f"disponibles {item['stock']}, solicitados {detail.quantity}"
+                )
+
             unit_price = _money(Decimal(str(item["price"])))
             detail_total = _money(unit_price * detail.quantity)
             invoice_total += detail_total
@@ -94,10 +121,19 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
             status_code,
             invoice.clientid,
             invoice.appoid,
+            invoice.user_id,
         )
 
         for detail in calculated_details:
-            insert_invoice_detail(connection, invoice_id, **detail)
+            insert_invoice_detail(
+                connection,
+                invoice_id,
+                created_by=invoice.user_id,
+                **detail,
+            )
+
+        if status_code == "P":
+            _decrease_invoice_products(connection, calculated_details)
 
     return {
         "inv_heaid": invoice_id,
@@ -105,3 +141,25 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
         "total": invoice_total,
         "details": calculated_details,
     }
+
+
+def mark_invoice_as_paid(inv_heaid: int, update_by: int) -> None:
+    with get_connection() as connection:
+        invoice = get_invoice_for_update(connection, inv_heaid)
+        if invoice is None:
+            raise LookupError("Factura no encontrada")
+        if invoice["status"] == "P":
+            return
+        if invoice["status"] == "C":
+            raise ValueError("Una factura cancelada no puede marcarse como pagada")
+
+        _decrease_invoice_products(connection, invoice["product_details"])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                update invoice_header
+                set status = 'P', update_by = %s, update_at = current_date
+                where inv_heaid = %s
+                """,
+                (update_by, inv_heaid),
+            )

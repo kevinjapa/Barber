@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AdministrationPanel } from "@/components/barber/AdministrationPanel";
 import { AppointmentsPanel } from "@/components/barber/AppointmentsPanel";
@@ -9,7 +9,9 @@ import { ClientsPanel } from "@/components/barber/ClientsPanel";
 import { DashboardView } from "@/components/barber/DashboardView";
 import { LoginScreen } from "@/components/barber/LoginScreen";
 import { PanelNavigation } from "@/components/barber/PanelNavigation";
+import { ProductsPanel } from "@/components/barber/ProductsPanel";
 import { ServicesPanel } from "@/components/barber/ServicesPanel";
+import { ThemeToggle } from "@/components/barber/ThemeToggle";
 import {
   emptyEmployee,
   emptyUser,
@@ -28,21 +30,24 @@ import {
 // Las llamadas pasan por los rewrites de Next para funcionar igual en localhost y en la IP LAN.
 const apiUrl = "";
 const sessionKey = "barberhub.session";
+const activeSectionKey = "barberhub.active-section";
 
-type AdministrationTab = "employee" | "user";
+type AdministrationTab = "employee" | "user" | "listEmployees";
+
+function getSectionLabel(section: PanelSection) {
+  const labels: Partial<Record<PanelSection, string>> = {
+    appointments: "Citas",
+    clients: "Clientes",
+    services: "Servicios",
+    products: "Productos",
+    billing: "Facturación",
+  };
+  return labels[section] ?? "Facturación";
+}
 
 export default function Home() {
-  const [user, setUser] = useState<AuthenticatedUser | null>(() => {
-    if (typeof window === "undefined") return null;
-    const savedSession = window.localStorage.getItem(sessionKey);
-    if (!savedSession) return null;
-    try {
-      return JSON.parse(savedSession) as AuthenticatedUser;
-    } catch {
-      window.localStorage.removeItem(sessionKey);
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -55,7 +60,7 @@ export default function Home() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activeSection, setActiveSection] = useState<PanelSection>("dashboard");
   const [administrationTab, setAdministrationTab] =
-    useState<AdministrationTab>("employee");
+    useState<AdministrationTab>("listEmployees");
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [employeeForm, setEmployeeForm] = useState<EmployeeForm>(emptyEmployee);
@@ -66,9 +71,55 @@ export default function Home() {
   const [userMessage, setUserMessage] = useState("");
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  useEffect(() => {
+    const savedSession = window.localStorage.getItem(sessionKey);
+    const savedSection = window.localStorage.getItem(activeSectionKey);
+
+    startTransition(() => {
+      if (savedSession) {
+        try {
+          const parsedSession = JSON.parse(savedSession) as AuthenticatedUser;
+          const savedUserId = parsedSession.userid;
+          if (typeof savedUserId === "number" && Number.isInteger(savedUserId) && savedUserId > 0) {
+            setUser(parsedSession);
+          } else {
+            window.localStorage.removeItem(sessionKey);
+            setLoginError("Tu sesión expiró. Inicia sesión nuevamente.");
+          }
+        } catch {
+          window.localStorage.removeItem(sessionKey);
+          setLoginError("Tu sesión expiró. Inicia sesión nuevamente.");
+        }
+      }
+
+      if (
+        savedSection === "dashboard" ||
+        savedSection === "appointments" ||
+        savedSection === "clients" ||
+        savedSection === "services" ||
+        savedSection === "products" ||
+        savedSection === "billing" ||
+        savedSection === "administration" ||
+        savedSection === "administration-users"
+      ) {
+        setActiveSection(savedSection);
+      }
+      setIsHydrated(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    window.localStorage.setItem(
+      activeSectionKey,
+      activeSection,
+    );
+  }, [activeSection, isHydrated]);
 
   useEffect(() => {
     if (!user) return;
+    const authenticatedUserId = user.userid;
     async function loadServices() {
       try {
         setIsLoading(true);
@@ -127,8 +178,15 @@ export default function Home() {
     }
     void loadProducts();
     async function loadInvoices() {
+      const userId = authenticatedUserId;
+      if (typeof userId !== "number" || !Number.isInteger(userId) || userId <= 0) {
+        setInvoices([]);
+        return;
+      }
       try {
-        const response = await fetch(`${apiUrl}/api/invoices`);
+        const response = await fetch(
+          `${apiUrl}/api/invoices?user_id=${userId}`,
+        );
         if (!response.ok) throw new Error("No se pudieron cargar las facturas");
         setInvoices(await response.json());
       } catch {
@@ -151,10 +209,15 @@ export default function Home() {
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.detail ?? "No se pudo iniciar sesión");
+      const userid = Number(result.userid);
+      if (!Number.isInteger(userid) || userid <= 0) {
+        throw new Error("La API no devolvió un usuario válido");
+      }
       const authenticatedUser: AuthenticatedUser = {
         username: result.username,
         last_name: result.last_name,
         role: result.role,
+        userid,
         empid: result.empid,
       };
       window.localStorage.setItem(
@@ -176,6 +239,7 @@ export default function Home() {
 
   function handleLogout() {
     window.localStorage.removeItem(sessionKey);
+    window.localStorage.removeItem(activeSectionKey);
     setUser(null);
     setServices([]);
     setClients([]);
@@ -280,15 +344,59 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    if (!user || activeSection !== "appointments") return;
+
+    const refreshVisibleAppointments = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAppointments();
+      }
+    };
+
+    const initialRefresh = window.requestAnimationFrame(() => {
+      void refreshAppointments();
+    });
+    const intervalId = window.setInterval(refreshVisibleAppointments, 10000);
+    document.addEventListener("visibilitychange", refreshVisibleAppointments);
+
+    return () => {
+      window.cancelAnimationFrame(initialRefresh);
+      window.clearInterval(intervalId);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshVisibleAppointments,
+      );
+    };
+  }, [user, activeSection]);
+
   async function refreshInvoices() {
+    const userId = user?.userid;
+    if (typeof userId !== "number" || !Number.isInteger(userId) || userId <= 0) {
+      setInvoices([]);
+      return;
+    }
     try {
-      const response = await fetch(`${apiUrl}/api/invoices`);
+      const response = await fetch(
+        `${apiUrl}/api/invoices?user_id=${userId}`,
+      );
       if (!response.ok) throw new Error("No se pudieron cargar las facturas");
       setInvoices(await response.json());
     } catch {
       setInvoices([]);
     }
   }
+
+  async function refreshProducts() {
+    try {
+      const response = await fetch(`${apiUrl}/api/products`);
+      if (!response.ok) throw new Error("No se pudieron cargar los productos");
+      setProducts(await response.json());
+    } catch {
+      setProducts([]);
+    }
+  }
+
+  if (!isHydrated) return null;
 
   if (!user) {
     return (
@@ -307,14 +415,7 @@ export default function Home() {
   const isAdministration =
     activeSection === "administration" ||
     activeSection === "administration-users";
-  const sectionLabel =
-    activeSection === "appointments"
-      ? "Citas"
-      : activeSection === "clients"
-        ? "Clientes"
-        : activeSection === "services"
-          ? "Servicios"
-          : "Facturación";
+  const sectionLabel = getSectionLabel(activeSection);
 
   return (
     <main className="app-shell min-h-screen px-4 py-4 text-[#1f2925] sm:px-8 lg:px-10">
@@ -324,7 +425,7 @@ export default function Home() {
           activeSection={activeSection}
           onSectionChange={(section) => {
             setActiveSection(section);
-            if (section === "administration") setAdministrationTab("employee");
+            if (section === "administration") setAdministrationTab("listEmployees");
           }}
           onLogout={handleLogout}
         />
@@ -343,6 +444,7 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <ThemeToggle />
               <span className="text-right text-sm text-[#65716b]">
                 <strong className="block text-[#1f2925]">
                   {user.username}
@@ -365,6 +467,7 @@ export default function Home() {
                   ? "user"
                   : administrationTab
               }
+              employees={employees}
               employeeForm={employeeForm}
               userForm={userForm}
               employeeError={employeeError}
@@ -405,6 +508,14 @@ export default function Home() {
               onChanged={() => void refreshServices()}
             />
           )}
+          {activeSection === "products" && (
+            <ProductsPanel
+              apiUrl={apiUrl}
+              user={user}
+              products={products}
+              onChanged={() => void refreshProducts()}
+            />
+          )}
           {activeSection === "clients" && (
             <ClientsPanel
               apiUrl={apiUrl}
@@ -416,6 +527,7 @@ export default function Home() {
             <AppointmentsPanel
               apiUrl={apiUrl}
               currentEmployeeId={user.empid}
+              currentUserId={user.userid}
               appointments={appointments}
               clients={clients}
               employees={employees}
@@ -425,6 +537,7 @@ export default function Home() {
           {activeSection === "billing" && (
             <BillingPanel
               apiUrl={apiUrl}
+              user={user}
               clients={clients}
               appointments={appointments}
               services={services}
@@ -435,6 +548,7 @@ export default function Home() {
           )}
           {activeSection !== "dashboard" &&
             activeSection !== "services" &&
+            activeSection !== "products" &&
             activeSection !== "clients" &&
             activeSection !== "appointments" &&
             activeSection !== "billing" &&
