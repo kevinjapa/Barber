@@ -8,6 +8,7 @@ import type {
   PendingPaymentInvoice,
   Product,
   Service,
+  AuthenticatedUser,
 } from "./types";
 
 type InvoiceItem = {
@@ -28,6 +29,7 @@ type NewClientForm = {
 
 type BillingPanelProps = {
   apiUrl: string;
+  user: AuthenticatedUser;
   clients: Client[];
   appointments: Appointment[];
   services: Service[];
@@ -35,6 +37,7 @@ type BillingPanelProps = {
   invoices: Invoice[];
   onChanged: () => void;
 };
+type BillingView = "create" | "daily";
 
 const paymentLabels: Record<string, string> = {
   E: "Efectivo",
@@ -65,6 +68,7 @@ function createCode() {
 
 export function BillingPanel({
   apiUrl,
+  user,
   clients,
   appointments,
   services,
@@ -93,16 +97,21 @@ export function BillingPanel({
     useState<InvoiceWithDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [query, setQuery] = useState("");
+  const [billingView, setBillingView] = useState<BillingView>("create");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [emailPromptInvoice, setEmailPromptInvoice] =
+    useState<Invoice | null>(null);
 
   const visibleInvoices = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return invoices;
     return invoices.filter((invoice) =>
+      (statusFilter === "all" || invoice.status === statusFilter) &&
       `${invoice.code} ${invoice.client_name ?? ""} ${invoice.client_last_name ?? ""}`
         .toLowerCase()
         .includes(normalized),
     );
-  }, [invoices, query]);
+  }, [invoices, query, statusFilter]);
 
   const selectedClient = clients.find(
     (client) => String(client.clientid) === clientid,
@@ -266,6 +275,7 @@ export function BillingPanel({
             status: "pendiente",
             clientid: clientid ? Number(clientid) : null,
             appoid: effectiveAppoid ? Number(effectiveAppoid) : null,
+            user_id: user.userid,
             details,
           }),
         }),
@@ -294,22 +304,22 @@ export function BillingPanel({
     }
   }
   // funcion para enviar correo electronico con la factura
-  async function handleSendInvoiceEmail() {
-    if (!selectedInvoice) return;
+  async function handleSendInvoiceEmail(invoice = selectedInvoice) {
+    if (!invoice) return;
     setError("");
     setMessage("");
     setIsSendingEmail(true);
     try {
       await readApiResponse(
         await fetch(
-          `${apiUrl}/api/invoices/${selectedInvoice.inv_heaid}/send-email`,
+          `${apiUrl}/api/invoices/${invoice.inv_heaid}/send-email`,
           {
             method: "POST",
           },
         ),
       );
       setMessage(
-        `El comprobante de la factura ${selectedInvoice.code} se está enviando al correo del cliente.`,
+        `El comprobante de la factura ${invoice.code} se está enviando al correo del cliente.`,
       );
     } catch (emailError) {
       setError(
@@ -332,13 +342,20 @@ export function BillingPanel({
         await fetch(`${apiUrl}/api/invoices/${pendingPayment.inv_heaid}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "pagada" }),
+          body: JSON.stringify({ status: "pagada", update_by: user.empid }),
         }),
       );
       setPendingPayment(null);
       setMessage(`Factura ${pendingPayment.code} marcada como pagada.`);
       setSelectedInvoice((current) => current ? { ...current, status: "P" } : current);
       setInvoiceDetails((current) => current ? { ...current, status: "P" } : current);
+      setEmailPromptInvoice({
+        inv_heaid: pendingPayment.inv_heaid,
+        code: pendingPayment.code,
+        total: pendingPayment.total,
+        payment_method: pendingPayment.paymentMethod,
+        status: "P",
+      });
       onChanged();
     } catch (paymentError) {
       setError(paymentError instanceof Error ? paymentError.message : "No se pudo confirmar el pago");
@@ -357,6 +374,39 @@ export function BillingPanel({
             <p className="mt-3 text-[#65716b]">La factura <strong className="text-[#1f2925]">{pendingPayment.code}</strong> está lista para confirmar.</p>
             <div className="mt-6 flex items-end justify-between border-y border-[#e3e9e4] py-5"><span className="text-sm text-[#65716b]">Total a cobrar · {paymentLabels[pendingPayment.paymentMethod] ?? pendingPayment.paymentMethod}</span><strong className="font-serif text-4xl text-[#153e38]">${pendingPayment.total.toFixed(2)}</strong></div>
             <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setPendingPayment(null)} disabled={isMarkingPaid} className="action-secondary px-5 py-3 text-sm font-semibold">Dejar pendiente</button><button type="button" onClick={() => void handleMarkAsPaid()} disabled={isMarkingPaid} className="action-primary px-5 py-3 text-sm font-semibold disabled:opacity-60">{isMarkingPaid ? "Confirmando..." : "Sí, marcar como pagada"}</button></div>
+          </div>
+        </div>
+      )}
+      {emailPromptInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#153e38]/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg border p-6 shadow-2xl sm:p-8">
+            <p className="panel-kicker text-sm font-semibold uppercase">Factura pagada</p>
+            <h2 className="panel-title mt-3 font-serif text-3xl">
+              ¿Enviar comprobante por correo?
+            </h2>
+            <p className="mt-3 text-[#65716b]">
+              Puedes enviarlo ahora o hacerlo después desde el detalle de la factura.
+            </p>
+            <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setEmailPromptInvoice(null)}
+                className="action-secondary px-5 py-3 text-sm font-semibold"
+              >
+                No, después
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const invoice = emailPromptInvoice;
+                  setEmailPromptInvoice(null);
+                  void handleSendInvoiceEmail(invoice);
+                }}
+                className="action-primary px-5 py-3 text-sm font-semibold"
+              >
+                Sí, enviar comprobante
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -380,7 +430,24 @@ export function BillingPanel({
           {message}
         </p>
       )}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
+      <div className="mt-6 flex gap-2 border-b border-[#d9cec1]">
+        <button
+          type="button"
+          onClick={() => setBillingView("create")}
+          className={`px-4 py-3 text-sm font-semibold ${billingView === "create" ? "border-b-2 border-[#c8754e]" : "text-[#75675d]"}`}
+        >
+          Generar factura
+        </button>
+        <button
+          type="button"
+          onClick={() => setBillingView("daily")}
+          className={`px-4 py-3 text-sm font-semibold ${billingView === "daily" ? "border-b-2 border-[#c8754e]" : "text-[#75675d]"}`}
+        >
+          Facturas del día
+        </button>
+      </div>
+      <div className={`mt-8 grid gap-8 ${billingView === "create" ? "lg:grid-cols-[0.8fr_1.2fr]" : "lg:grid-cols-1"}`}>
+        {billingView === "create" && (
         <form
           onSubmit={handleSubmit}
           className="panel-surface h-fit border p-6"
@@ -595,11 +662,13 @@ export function BillingPanel({
             {isSaving ? "Generando..." : "Generar factura"}
           </button>
         </form>
+        )}
+        {billingView === "daily" && (
         <div className="panel-surface border p-6">
           <div className="flex flex-col justify-between gap-4 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-center">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
-                Historial
+                {billingView === "daily" ? "Facturas del día" : "Historial"}
               </p>
               <h3 className="mt-2 font-serif text-2xl">Facturas emitidas</h3>
             </div>
@@ -610,6 +679,17 @@ export function BillingPanel({
               onChange={(event) => setQuery(event.target.value)}
               className="field-control w-full px-3 py-2 text-sm sm:w-56"
             />
+            <select
+              aria-label="Filtrar facturas por estado"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="field-control w-full px-3 py-2 text-sm sm:w-40"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="D">Pendientes</option>
+              <option value="P">Pagadas</option>
+              <option value="C">Canceladas</option>
+            </select>
           </div>
           {visibleInvoices.length === 0 ? (
             <p className="py-8 text-[#75675d]">No hay facturas registradas.</p>
@@ -643,7 +723,8 @@ export function BillingPanel({
             </div>
           )}
           {selectedInvoice && (
-            <div className="mt-6 border-t border-[#e6dbcf] pt-6">
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#153e38]/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+              <div className="panel-surface max-h-[90vh] w-full max-w-2xl overflow-y-auto border p-6 shadow-2xl sm:p-8">
               <div className="flex flex-col justify-between gap-4 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-start">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">
@@ -725,9 +806,21 @@ export function BillingPanel({
                   </div>
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedInvoice(null);
+                  setInvoiceDetails(null);
+                }}
+                className="action-secondary mt-6 px-4 py-2 text-sm font-semibold"
+              >
+                Cerrar detalle
+              </button>
+              </div>
             </div>
           )}
         </div>
+        )}
       </div>
     </section>
   );

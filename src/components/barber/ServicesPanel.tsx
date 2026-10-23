@@ -7,6 +7,7 @@ type ServiceForm = {
   name: string;
   duration: string;
   price: string;
+  description: string;
   status: boolean;
   image: File | null;
 };
@@ -22,6 +23,7 @@ const emptyForm: ServiceForm = {
   name: "",
   duration: "30",
   price: "",
+  description: "",
   status: true,
   image: null,
 };
@@ -30,8 +32,20 @@ const inputClass = "field-control mt-2 w-full px-3 py-3";
 
 async function readApiResponse(response: Response) {
   const result = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(result.detail ?? "No se pudo completar la operación");
+  if (!response.ok) {
+    const detail = Array.isArray(result.detail)
+      ? result.detail
+          .map((item: { loc?: unknown[]; msg?: string }) => {
+            const field = item.loc?.at(-1);
+            return field ? `${String(field)}: ${item.msg ?? "valor inválido"}` : item.msg;
+          })
+          .filter(Boolean)
+          .join(". ")
+      : typeof result.detail === "string"
+        ? result.detail
+        : "No se pudo completar la operación";
+    throw new Error(detail);
+  }
   return result;
 }
 
@@ -67,6 +81,7 @@ export function ServicesPanel({
       name: service.name,
       duration: String(service.duration),
       price: String(service.price),
+      description: service.description ?? "",
       status: true,
       image: null,
     });
@@ -83,11 +98,22 @@ export function ServicesPanel({
     setIsSaving(true);
 
     try {
+      if (!user.empid) {
+        throw new Error(
+          "Tu sesión no tiene un empleado asociado. Cierra sesión e inicia sesión nuevamente.",
+        );
+      }
       const payload = new FormData();
       payload.append("name", form.name);
       payload.append("duration", form.duration);
       payload.append("price", form.price);
+      payload.append("description", form.description);
       payload.append("status", String(form.status));
+      if (editingService) {
+        payload.append("update_by", String(user.empid));
+      } else {
+        payload.append("created_by", String(user.empid));
+      }
       if (form.image) payload.append("image", form.image);
 
       if (editingService) {
@@ -127,6 +153,8 @@ export function ServicesPanel({
       await readApiResponse(
         await fetch(`${apiUrl}/api/services/${service.serviceid}`, {
           method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ update_by: user.empid }),
         }),
       );
       setMessage("Servicio eliminado correctamente.");
@@ -219,6 +247,11 @@ export function ServicesPanel({
                       <p className="mt-1 text-sm text-[#75675d]">
                         {service.duration} minutos
                       </p>
+                      {service.description && (
+                        <p className="mt-1 text-sm text-[#75675d]">
+                          {service.description}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-5 sm:justify-end">
@@ -295,6 +328,16 @@ export function ServicesPanel({
                   value={form.price}
                   onChange={(event) => updateField("price", event.target.value)}
                   className={inputClass}
+                />
+              </label>
+              <label className="block text-sm font-semibold">
+                Descripción
+                <textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    updateField("description", event.target.value)
+                  }
+                  className={`${inputClass} min-h-24 resize-y`}
                 />
               </label>
               <label className="block text-sm font-semibold">

@@ -43,6 +43,8 @@ export function ProductsPanel({
 }: Readonly<ProductsPanelProps>) {
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [stockProduct, setStockProduct] = useState<Product | null>(null);
+  const [stockQuantity, setStockQuantity] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -59,6 +61,7 @@ export function ProductsPanel({
 
   function startEditing(product: Product) {
     clearFeedback();
+    setStockProduct(null);
     setEditingProduct(product);
     setForm({
       name: product.name,
@@ -74,6 +77,40 @@ export function ProductsPanel({
     setForm(emptyForm);
   }
 
+  function startStockEntry(product: Product) {
+    clearFeedback();
+    setEditingProduct(null);
+    setStockProduct(product);
+    setStockQuantity("");
+  }
+
+  async function handleStockEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    clearFeedback();
+    setIsSaving(true);
+    try {
+      if (!user.empid) throw new Error("Cierra sesión e inicia sesión nuevamente para registrar inventario.");
+      await readApiResponse(
+        await fetch(`${apiUrl}/api/products/${stockProduct?.productid}/stock`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            quantity: Number(stockQuantity),
+            update_by: user.empid,
+          }),
+        }),
+      );
+      setMessage("Ingreso de inventario registrado correctamente.");
+      setStockProduct(null);
+      setStockQuantity("");
+      onChanged();
+    } catch (stockError) {
+      setError(stockError instanceof Error ? stockError.message : "No se pudo registrar el inventario");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     clearFeedback();
@@ -87,9 +124,9 @@ export function ProductsPanel({
             body: JSON.stringify({
               name: form.name,
               code: form.code,
-              stock: form.stock,
               price: Number(form.price),
               description: form.description,
+              update_by: user.empid,
             }),
           }),
         );
@@ -102,6 +139,7 @@ export function ProductsPanel({
         payload.append("price", form.price);
         payload.append("status", "A");
         payload.append("description", form.description);
+        payload.append("created_by", String(user.empid ?? ""));
         await readApiResponse(
           await fetch(`${apiUrl}/api/products`, {
             method: "POST",
@@ -130,6 +168,8 @@ export function ProductsPanel({
       await readApiResponse(
         await fetch(`${apiUrl}/api/products/${product.productid}/status`, {
           method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ update_by: user.empid }),
         }),
       );
       setMessage("Producto inactivado correctamente.");
@@ -193,6 +233,7 @@ export function ProductsPanel({
                     {canManageProducts && (
                       <div className="flex gap-3 text-sm font-semibold">
                         <button type="button" onClick={() => startEditing(product)} className="text-[#9b5b3b] hover:text-[#2c2520]">Editar</button>
+                        <button type="button" onClick={() => startStockEntry(product)} className="text-[#1d5b4f] hover:text-[#2c2520]">Ingresar stock</button>
                         <button type="button" onClick={() => void handleDisable(product)} disabled={isDisabling === product.productid} className="text-[#9b3d32] hover:text-[#6e2b25] disabled:opacity-50">
                           {isDisabling === product.productid ? "Inactivando..." : "Inactivar"}
                         </button>
@@ -205,14 +246,30 @@ export function ProductsPanel({
           )}
         </div>
 
-        {canManageProducts && (
+        {canManageProducts && stockProduct ? (
+          <form onSubmit={handleStockEntry} className="panel-surface h-fit border p-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">Entrada de inventario</p>
+            <h3 className="mt-2 font-serif text-2xl">{stockProduct.name}</h3>
+            <p className="mt-2 text-sm text-[#75675d]">Stock actual: {stockProduct.stock}</p>
+            <label className="mt-6 block text-sm font-semibold">
+              Cantidad a ingresar
+              <input required min="1" type="number" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} className={inputClass} />
+            </label>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <button type="submit" disabled={isSaving} className="action-primary px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                {isSaving ? "Registrando..." : "Registrar ingreso"}
+              </button>
+              <button type="button" onClick={() => setStockProduct(null)} className="action-secondary px-5 py-3 text-sm font-semibold">Cancelar</button>
+            </div>
+          </form>
+        ) : canManageProducts && (
           <form onSubmit={handleSubmit} className="panel-surface h-fit border p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#9b5b3b]">{editingProduct ? "Editar producto" : "Nuevo producto"}</p>
             <h3 className="mt-2 font-serif text-2xl">{editingProduct ? editingProduct.name : "Agregar al catálogo"}</h3>
             <div className="mt-6 space-y-5">
               <label className="block text-sm font-semibold">Nombre<input required value={form.name} onChange={(event) => updateField("name", event.target.value)} className={inputClass} /></label>
               <label className="block text-sm font-semibold">Código<input required value={form.code} onChange={(event) => updateField("code", event.target.value)} className={inputClass} /></label>
-              <label className="block text-sm font-semibold">Stock<input required min="0" type="number" value={form.stock} onChange={(event) => updateField("stock", event.target.value)} className={inputClass} /></label>
+              {!editingProduct && <label className="block text-sm font-semibold">Stock inicial<input required min="0" type="number" value={form.stock} onChange={(event) => updateField("stock", event.target.value)} className={inputClass} /></label>}
               <label className="block text-sm font-semibold">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(event) => updateField("price", event.target.value)} className={inputClass} /></label>
               <label className="block text-sm font-semibold">Descripción<textarea value={form.description} onChange={(event) => updateField("description", event.target.value)} className={`${inputClass} min-h-24`} /></label>
             </div>

@@ -3,7 +3,11 @@ export type Service = {
   name: string;
   duration: number;
   price: number;
+  description?: string | null;
   img_url?: string | null;
+  created_by?: number | null;
+  update_by?: number | null;
+  update_at?: string | null;
 };
 
 export type Client = {
@@ -37,7 +41,7 @@ export type Appointment = {
   end_time: string;
   description: string;
   status: string;
-  empid: number;
+  empid?: number | null;
   clientid: number;
   employee_name: string;
   employee_last_name: string;
@@ -52,6 +56,9 @@ export type Product = {
   stock: string;
   price: number;
   description?: string;
+  created_by?: number | null;
+  update_by?: number | null;
+  update_at?: string | null;
 };
 
 export type Invoice = {
@@ -64,6 +71,9 @@ export type Invoice = {
   appoid?: number | null;
   client_name?: string | null;
   client_last_name?: string | null;
+  created_by?: number | null;
+  update_by?: number | null;
+  update_at?: string | null;
 };
 
 export type InvoiceDetail = {
@@ -74,6 +84,9 @@ export type InvoiceDetail = {
   total: number;
   service_name?: string | null;
   product_name?: string | null;
+  created_by?: number | null;
+  update_by?: number | null;
+  update_at?: string | null;
 };
 
 export type InvoiceWithDetails = Invoice & {
@@ -89,6 +102,7 @@ export type PendingPaymentInvoice = {
 
 export type AuthenticatedUser = {
   username: string;
+  userid?: number;
   last_name?: string;
   role?: string;
   empid?: number;

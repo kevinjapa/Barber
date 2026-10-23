@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import type { Employee } from "./types";
+import { ThemeToggle } from "./ThemeToggle";
 
 type PublicAppointment = {
   date: string;
   start_time: string;
   end_time: string;
-  empid: number;
 };
 
 type BookingForm = {
@@ -73,10 +72,9 @@ export function CustomerBookingPage() {
   const [selectedDate, setSelectedDate] = useState(() =>
     localDateString(new Date()),
   );
-  const [selectedEmployee, setSelectedEmployee] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [appointments, setAppointments] = useState<PublicAppointment[]>([]);
+  const [employeeCapacity, setEmployeeCapacity] = useState(0);
   const [form, setForm] = useState<BookingForm>(emptyForm);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -99,19 +97,19 @@ export function CustomerBookingPage() {
     async function loadAvailability() {
       setIsLoading(true);
       try {
-        const [employeesResponse, appointmentsResponse] = await Promise.all([
-          fetch("/api/public/employees"),
+        const [appointmentsResponse, employeesResponse] = await Promise.all([
           fetch("/api/public/appointments"),
+          fetch("/api/public/employees"),
         ]);
-        if (!employeesResponse.ok || !appointmentsResponse.ok)
+        if (!appointmentsResponse.ok || !employeesResponse.ok)
           throw new Error("No pudimos cargar la disponibilidad.");
-        const [availableEmployees, activeAppointments] = await Promise.all([
-          employeesResponse.json(),
+        const [activeAppointments, availableEmployees] = await Promise.all([
           appointmentsResponse.json(),
+          employeesResponse.json(),
         ]);
         if (isActive) {
-          setEmployees(availableEmployees);
           setAppointments(activeAppointments);
+          setEmployeeCapacity(availableEmployees.length);
         }
       } catch (loadError) {
         if (isActive) {
@@ -135,13 +133,8 @@ export function CustomerBookingPage() {
     () => createCalendarDays(month),
     [month],
   );
-  const selectedEmployeeData = employees.find(
-    (employee) => String(employee.empid) === selectedEmployee,
-  );
-  const employeeAppointments = appointments.filter(
-    (appointment) =>
-      appointment.date.slice(0, 10) === selectedDate &&
-      String(appointment.empid) === selectedEmployee,
+  const selectedDateAppointments = appointments.filter(
+    (appointment) => appointment.date.slice(0, 10) === selectedDate,
   );
   const timeSlots = Array.from({ length: 11 }, (_, index) => {
     const hour = 9 + index;
@@ -153,11 +146,11 @@ export function CustomerBookingPage() {
 
   function isBooked(time: string) {
     const end = slotEnd(time);
-    return employeeAppointments.some(
-      (appointment) =>
+    const reservations = selectedDateAppointments.filter((appointment) =>
         formatHour(appointment.start_time) < end &&
         formatHour(appointment.end_time) > time,
     );
+    return employeeCapacity === 0 || reservations.length >= employeeCapacity;
   }
 
   function chooseDate(value: string) {
@@ -176,7 +169,6 @@ export function CustomerBookingPage() {
   function changeCustomer() {
     setClientFound(null);
     setForm((current) => ({ ...emptyForm, dni: current.dni }));
-    setSelectedEmployee("");
     setSelectedTime("");
     setError("");
     setMessage("");
@@ -266,8 +258,8 @@ export function CustomerBookingPage() {
       setError("Debes aceptar el aviso de privacidad para reservar.");
       return;
     }
-    if (!selectedEmployee || !selectedTime) {
-      setError("Selecciona un barbero y un horario disponible.");
+    if (!selectedTime) {
+      setError("Selecciona un horario disponible.");
       return;
     }
     setIsSaving(true);
@@ -280,7 +272,6 @@ export function CustomerBookingPage() {
           date: selectedDate,
           start_time: selectedTime,
           end_time: slotEnd(selectedTime),
-          empid: Number(selectedEmployee),
           privacy_consent: privacyConsent,
           marketing_consent: marketingConsent,
         }),
@@ -297,7 +288,6 @@ export function CustomerBookingPage() {
       window.alert(confirmationMessage);
       setClientFound(null);
       setForm(emptyForm);
-      setSelectedEmployee("");
       setSelectedTime("");
       setPrivacyConsent(false);
       setMarketingConsent(false);
@@ -307,7 +297,6 @@ export function CustomerBookingPage() {
           date: selectedDate,
           start_time: selectedTime,
           end_time: slotEnd(selectedTime),
-          empid: Number(selectedEmployee),
         },
       ]);
     } catch (submitError) {
@@ -343,7 +332,7 @@ export function CustomerBookingPage() {
     <main className="booking-shell min-h-screen">
       <div className="mx-auto max-w-6xl px-5 py-6 sm:px-8 lg:px-10">
         <header className="flex items-center justify-between">
-          <a href="/reserva" className="flex items-center gap-3">
+          <a href="/reservar" className="flex items-center gap-3">
             {/* <span className="booking-mark">A</span> */}
             <img
               src="/assets/alvaberber_icon.png"
@@ -352,9 +341,12 @@ export function CustomerBookingPage() {
             />
             <span className="font-serif text-xl tracking-tight">AlvaBarber Academy</span>
           </a>
-          <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-[#718078] sm:block">
-            Reserva online
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-[#718078] sm:block">
+              Reserva online
+            </span>
+            <ThemeToggle />
+          </div>
         </header>
 
         <section className="booking-hero py-12 sm:py-16">
@@ -363,8 +355,8 @@ export function CustomerBookingPage() {
             Un buen corte empieza con un buen momento.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[#65716b]">
-            Elige el día, tu barbero y el horario que mejor te convenga.
-            Nosotros nos encargamos del resto.
+            Elige el día y el horario que mejor te convenga.
+            Un barbero confirmará tu solicitud.
           </p>
         </section>
 
@@ -558,25 +550,9 @@ export function CustomerBookingPage() {
                   {dateFormatter.format(new Date(`${selectedDate}T12:00:00`))}
                 </strong>
               </p>
-              <label className="mt-5 block text-sm font-semibold text-[#153e38]">
-                Elige tu barbero
-                <select
-                  required
-                  value={selectedEmployee}
-                  onChange={(event) => {
-                    setSelectedEmployee(event.target.value);
-                    setSelectedTime("");
-                  }}
-                  className="booking-field mt-2 w-full"
-                >
-                  <option value="">Selecciona una opción</option>
-                  {employees.map((employee) => (
-                    <option key={employee.empid} value={employee.empid}>
-                      {employee.name} {employee.last_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <p className="mt-5 block text-sm font-semibold text-[#153e38]">
+                Elige un horario
+              </p>
               <p className="mt-6 text-sm font-semibold text-[#153e38]">
                 Horarios disponibles
               </p>
@@ -590,7 +566,7 @@ export function CustomerBookingPage() {
                       <button
                         type="button"
                         key={time}
-                        disabled={!selectedEmployee || timeIsBooked}
+                        disabled={timeIsBooked}
                         onClick={() => setSelectedTime(time)}
                         className={`booking-time ${selectedTime === time ? "booking-time-selected" : ""} ${timeIsBooked ? "booking-time-booked" : ""}`}
                       >
@@ -601,11 +577,10 @@ export function CustomerBookingPage() {
                   })}
                 </div>
               )}
-              {selectedEmployeeData && (
-                <p className="mt-4 text-xs text-[#718078]">
-                  Las citas duran 1 hora. Los horarios ocupados aparecen bloqueados.
-                </p>
-              )}
+              <p className="mt-4 text-xs text-[#718078]">
+                Las citas duran 1 hora. Los horarios ocupados aparecen bloqueados.
+                Tu solicitud quedará pendiente hasta que un barbero la confirme.
+              </p>
             </div>
           </section>
 
@@ -649,7 +624,7 @@ export function CustomerBookingPage() {
             </div>
             <button
               type="submit"
-              disabled={isSaving || !selectedEmployee || !selectedTime}
+              disabled={isSaving || !selectedTime}
               className="booking-submit mt-7 w-full"
             >
               {isSaving ? "Enviando solicitud..." : "Confirmar reserva"}

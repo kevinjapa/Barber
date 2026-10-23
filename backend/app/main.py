@@ -21,6 +21,7 @@ from .services.database_Service import (
     deactivate_employee,
     deactivate_person,
     deactivate_product,
+    add_product_stock_entry,
     deactivate_service,
     find_client,
     find_employee,
@@ -38,6 +39,7 @@ from .services.database_Service import (
     list_active_services,
     list_active_clients,
     list_invoices,
+    get_app_user,
     find_invoice,
     update_invoice_status,
     list_all_services,
@@ -108,9 +110,14 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: str = Field(min_length=1)
     code: str = Field(min_length=1)
-    stock: str
     price: float = Field(ge=0)
     description: str = ""
+    update_by: int = Field(gt=0)
+
+
+class ProductStockEntry(BaseModel):
+    quantity: int = Field(gt=0)
+    update_by: int = Field(gt=0)
 
 
 class PersonUpdate(BaseModel):
@@ -142,6 +149,7 @@ class InvoiceCreate(BaseModel):
     status: str = Field(min_length=1)
     clientid: Optional[int] = Field(default=None, gt=0)
     appoid: Optional[int] = Field(default=None, gt=0)
+    user_id: int = Field(gt=0)
     details: list[InvoiceDetailCreate] = Field(min_length=1)
 
 
@@ -150,7 +158,6 @@ class PublicAppointmentCreate(BaseModel):
     start_time: str = Field(min_length=5, max_length=5)
     end_time: str = Field(min_length=5, max_length=5)
     description: str = Field(default="", max_length=500)
-    empid: int = Field(gt=0)
     dni: str = Field(min_length=5, max_length=20)
     name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(min_length=1, max_length=80)
@@ -240,11 +247,13 @@ def create_service(
     name: str = Form(...),
     duration: int = Form(...),
     price: float = Form(...),
+    description: str = Form(""),
     status: bool = Form(...),
+    created_by: int = Form(...),
     image: Optional[UploadFile] = File(None)) -> dict[str, str]:
     img_url = upload_img(image) if image else None
     try:
-        insert_service(name,duration,price,status,img_url)
+        insert_service(name, duration, price, status, created_by, img_url, description)
     except Exception as e:
         if img_url:
             delete_img(img_url)
@@ -257,6 +266,8 @@ def edit_service(
     name: str = Form(...),
     duration: int = Form(...),
     price: float = Form(...),
+    description: str = Form(""),
+    update_by: int = Form(...),
     image: Optional[UploadFile] = File(None),
 ):
     current_service = find_service(serviceid)
@@ -264,7 +275,15 @@ def edit_service(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Servicio no encontrado o inactivo")
     new_img_url = upload_img(image) if image else current_service.get("img_url")
     try:
-        updated = update_service(serviceid, name, duration, price, new_img_url)
+        updated = update_service(
+            serviceid,
+            name,
+            duration,
+            price,
+            description,
+            update_by,
+            new_img_url,
+        )
     except Exception as error:
         if image and new_img_url:
             delete_img(new_img_url)
@@ -279,17 +298,20 @@ def edit_service(
 
 
 @app.patch("/api/services/{serviceid}/status")
-def disable_service(serviceid: int):
+def disable_service(serviceid: int, audit: dict):
+    update_by = audit.get("update_by")
+    if not isinstance(update_by, int) or update_by <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="update_by es obligatorio")
     service = find_service(serviceid)
-    if service is None or not deactivate_service(serviceid):
+    if service is None or not deactivate_service(serviceid, update_by):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Servicio no encontrado")
     if service.get("img_url"):
         delete_img(service["img_url"])
     return {"status": "ok", "message": "Servicio inactivado correctamente"}
 
 @app.delete("/api/services/{serviceid}")
-def delete_service(serviceid: int):
-    return disable_service(serviceid)
+def delete_service(serviceid: int, audit: dict):
+    return disable_service(serviceid, audit)
 
 # Producto
 # @app.post("/api/products", status_code=status.HTTP_201_CREATED)
@@ -304,12 +326,13 @@ def create_product(
     price: float = Form(...),
     status: str = Form(...),
     description: str = Form(...),
+    created_by: int = Form(...),
     image: Optional[UploadFile] = File(None)) -> dict[str, str]:
     img_url = None
     if image:
         img_url = upload_img(image)
     try:
-        insert_product(name,code,stock,price,status,description,img_url)
+        insert_product(name, code, stock, price, status, description, created_by, img_url)
     except Exception as e:
         if img_url:
             delete_img(img_url)
@@ -331,14 +354,30 @@ def get_product(productid: int):
 
 @app.put("/api/products/{productid}")
 def edit_product(productid: int, product: ProductUpdate):
-    if not update_product(productid, product.name, product.code, product.stock, product.price, product.description):
+    if not update_product(
+        productid, product.name, product.code, product.price,
+        product.description, product.update_by,
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado o inactivo")
     return {"status": "ok", "message": "Producto actualizado correctamente"}
 
 
+@app.post("/api/products/{productid}/stock")
+def add_product_stock(productid: int, entry: ProductStockEntry):
+    if not add_product_stock_entry(productid, entry.quantity, entry.update_by):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto no encontrado o inactivo",
+        )
+    return {"status": "ok", "message": "Ingreso de inventario registrado correctamente"}
+
+
 @app.patch("/api/products/{productid}/status")
-def disable_product(productid: int):
-    if not deactivate_product(productid):
+def disable_product(productid: int, audit: dict):
+    update_by = audit.get("update_by")
+    if not isinstance(update_by, int) or update_by <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="update_by es obligatorio")
+    if not deactivate_product(productid, update_by):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
     return {"status": "ok", "message": "Producto inactivado correctamente"}
 
@@ -492,8 +531,11 @@ def create_invoice(invoice: InvoiceCreate):
 
 
 @app.get("/api/invoices")
-def get_invoices():
-    return list_invoices()
+def get_invoices(user_id: int):
+    # app_user = get_app_user(user_id)
+    # if app_user is None:
+    #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Usuario inválido")
+    return list_invoices(user_id)
 
 
 @app.get("/api/invoices/{inv_heaid}")
@@ -515,15 +557,18 @@ def change_invoice_status(inv_heaid: int, invoice: dict):
         status_code = "D"
     else:
         status_code = "C"
+    update_by = invoice.get("update_by")
+    if not isinstance(update_by, int) or update_by <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="update_by es obligatorio")
     if status_code == "P":
         try:
-            mark_invoice_as_paid(inv_heaid)
+            mark_invoice_as_paid(inv_heaid, update_by)
         except LookupError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
         return {"status": "ok", "message": "Factura marcada como pagada correctamente"}
-    if not update_invoice_status(inv_heaid, status_code):
+    if not update_invoice_status(inv_heaid, status_code, update_by):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
     return {"status": "ok", "message": "Estado de factura actualizado correctamente"}
 
@@ -577,8 +622,14 @@ def create_appointment(appointment: dict) -> dict[str, str]:
 
 @app.put("/api/appointment/{appoid}")
 def edit_appointment(appoid: int, appointment: dict):
+    user_id = appointment.get("user_id")
+    if not isinstance(user_id, int) or user_id <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Se requiere un usuario válido")
+    app_user = get_app_user(user_id)
+    if app_user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Usuario inválido")
     try:
-        updated = update_appointment(appoid, appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"])
+        updated = update_appointment(appoid, appointment["date"], appointment["start_time"], appointment["end_time"], appointment["description"], appointment["status"], appointment["empid"], appointment["clientid"], app_user["empid"])
     except ClientDailyAppointmentError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El cliente ya tiene otra cita registrada para ese día.") from error
     except AppointmentConflictError as error:
@@ -593,14 +644,26 @@ def change_appointment_status(appoid: int, appointment: dict):
     appointment_status = appointment.get("status")
     if appointment_status not in {"P", "A", "F"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Estado de cita inválido")
-    if not update_appointment_status(appoid, appointment_status):
+    user_id = appointment.get("user_id")
+    if not isinstance(user_id, int) or user_id <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Se requiere un usuario válido")
+    app_user = get_app_user(user_id)
+    if app_user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Usuario inválido")
+    if not update_appointment_status(appoid, appointment_status, app_user["empid"]):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La cita no existe o ya está finalizada")
     return {"status": "ok", "message": "Estado de cita actualizado correctamente"}
 
 
 @app.delete("/api/appointment/{appoid}")
-def delete_appointment(appoid: int):
-    if not deactivate_appointment(appoid):
+def delete_appointment(appoid: int, appointment: dict):
+    user_id = appointment.get("user_id")
+    if not isinstance(user_id, int) or user_id <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Se requiere un usuario válido")
+    app_user = get_app_user(user_id)
+    if app_user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Usuario inválido")
+    if not deactivate_appointment(appoid, app_user["empid"]):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cita no encontrada")
     return {"status": "ok", "message": "Cita cancelada correctamente"}
 
@@ -613,7 +676,7 @@ def create_appuser(appuser: dict) -> dict[str, str]:
 
 # login
 @app.post("/api/login")
-def login_result(credentials: dict) -> dict[str, str]:
+def login_result(credentials: dict) -> dict[str, object]:
     very_pass = PasswordHasher()
     user = login(credentials["username"], credentials["password"])
     if user is None:
@@ -626,7 +689,9 @@ def login_result(credentials: dict) -> dict[str, str]:
             detail="Credenciales inválidas"
         )
     return {
-        "status": "ok","message": "Login successful","username": user["username"],"last_name": user["last_name"],"role": user["role"]
+        "status": "ok","message": "Login successful","username": user["username"],
+        "last_name": user["last_name"],"role": user["role"],
+        "userid": user["userid"], "empid": user["empid"],
     }
 
 
@@ -656,27 +721,3 @@ def generate_invoice_pdf(invoice: dict) -> str:
     HTML(string=html_content).write_pdf(filename)
 
     return filename
-
-
-# def generate_invoice_pdf(invoice):
-#     filename = f"/tmp/comprobante_{invoice['id']}.pdf"
-
-#     pdf = canvas.Canvas(filename, pagesize=A4)
-
-#     pdf.drawString(50, 800, "ALVABARBER")
-#     pdf.drawString(50, 770, "COMPROBANTE DE SERVICIO")
-
-#     pdf.drawString(50, 730, f"N.º {invoice['id']}")
-#     pdf.drawString(50, 700, f"Cliente: {invoice['customer_name']}")
-
-#     pdf.drawString(50, 650, "Servicio")
-#     pdf.drawString(400, 650, "Precio")
-
-#     pdf.drawString(50, 620, invoice["service_name"])
-#     pdf.drawString(400, 620, f"${invoice['price']:.2f}")
-
-#     pdf.drawString(50, 570, f"TOTAL: ${invoice['total']:.2f}")
-
-#     pdf.save()
-
-#     return filename

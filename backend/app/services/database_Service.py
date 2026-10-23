@@ -92,7 +92,8 @@ def list_active_services() -> Iterator[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select s.serviceid, s.name, s.duration, s.price::float8 as price, s.status, s.img_url
+                select s.serviceid, s.name, s.duration, s.price::float8 as price, s.status, s.img_url,
+                       s.description, s.created_by, s.update_by, s.update_at
                 from services s
                 where s.status =true
                 order by serviceid
@@ -100,26 +101,34 @@ def list_active_services() -> Iterator[dict]:
             )
             yield from cursor.fetchall()
 
-def insert_service(name:str, duration:int, price:float,status:bool, img_url: Optional[str] = None) -> None:
+def insert_service(
+    name: str,
+    duration: int,
+    price: float,
+    status: bool,
+    created_by: int,
+    img_url: Optional[str] = None,
+    description: str = "",
+) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                insert into services (name, duration, price, status, img_url)
-                values (%s,%s, %s,%s,%s)
+                insert into services (name, duration, price, status, img_url, created_by, description)
+                values (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (name, duration, price, status, img_url),
+                (name, duration, price, status, img_url, created_by, description),
             )
 
-def insert_product(name:str, code:str, stock:str, price:float, status:str,description:str, img_url: Optional[str] = None) -> None:
+def insert_product(name: str, code: str, stock: str, price: float, status: str, description: str, created_by: int, img_url: Optional[str] = None) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                insert into product (name, code, stock, price, status, description, img_url)
-                values (%s,%s, %s,%s,%s,%s,%s)
+                insert into product (name, code, stock, price, status, description, img_url, created_by)
+                values (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (name, code, stock, price, status, description, img_url),
+                (name, code, stock, price, status, description, img_url, created_by),
             )
 
 def insert_emloyee(dni:str, name:str, last_name:str, email:str, address:str, phone:str,hire_date:str) -> None:
@@ -239,7 +248,8 @@ def list_products() -> Iterator[dict]:
             cursor.execute(
                 """
                 select productid, name, code, stock, price::float8 as price,
-                       created_at, status, description
+                       created_at, status, description, img_url,
+                       created_by, update_by, update_at
                 from product
                 where status <> 'I'
                 order by productid
@@ -254,7 +264,7 @@ def find_product(productid: int) -> Optional[dict]:
             cursor.execute(
                 """
                 select productid, name, code, stock, price::float8 as price,
-                       created_at, status, description
+                       created_at, status, description, img_url
                 from product
                 where productid = %s
                 """,
@@ -263,24 +273,42 @@ def find_product(productid: int) -> Optional[dict]:
             return cursor.fetchone()
 
 
-def update_product(productid: int, name: str, code: str, stock: str, price: float, description: str) -> bool:
+def update_product(productid: int, name: str, code: str, price: float, description: str, update_by: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 update product
-                set name = %s, code = %s, stock = %s, price = %s, description = %s
+                set name = %s, code = %s, price = %s, description = %s,
+                    update_by = %s, update_at = current_date
                 where productid = %s and status <> 'I'
                 """,
-                (name, code, stock, price, description, productid),
+                (name, code, price, description, update_by, productid),
             )
             return cursor.rowcount > 0
 
 
-def deactivate_product(productid: int) -> bool:
+def add_product_stock_entry(productid: int, quantity: int, update_by: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("update product set status = 'I' where productid = %s", (productid,))
+            cursor.execute(
+                """
+                update product
+                set stock = stock + %s, update_by = %s, update_at = current_date
+                where productid = %s and status <> 'I'
+                """,
+                (quantity, update_by, productid),
+            )
+            return cursor.rowcount > 0
+
+
+def deactivate_product(productid: int, update_by: int) -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "update product set status = 'I', update_by = %s, update_at = current_date where productid = %s",
+                (update_by, productid),
+            )
             return cursor.rowcount > 0
 
 
@@ -289,7 +317,9 @@ def list_all_services() -> Iterator[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select serviceid, name, duration, price::float8 as price, status
+                select serviceid, name, duration, price::float8 as price, status,
+                       img_url, description, img_url,
+                       description
                 from services
                 where status = true
                 order by serviceid
@@ -303,7 +333,7 @@ def find_service(serviceid: int) -> Optional[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select serviceid, name, duration, price::float8 as price, status
+                select serviceid, name, duration, price::float8 as price, status, img_url, description
                 from services
                 where serviceid = %s
                 """,
@@ -312,24 +342,36 @@ def find_service(serviceid: int) -> Optional[dict]:
             return cursor.fetchone()
 
 
-def update_service(serviceid: int, name: str, duration: int, price: float, img_url: Optional[str]) -> bool:
+def update_service(
+    serviceid: int,
+    name: str,
+    duration: int,
+    price: float,
+    description: str,
+    update_by: int,
+    img_url: Optional[str],
+) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 update services
-                set name = %s, duration = %s, price = %s, img_url = %s
+                set name = %s, duration = %s, price = %s, description = %s, img_url = %s,
+                    update_by = %s, update_at = current_date
                 where serviceid = %s and status = true
                 """,
-                (name, duration, price, img_url, serviceid),
+                (name, duration, price, description, img_url, update_by, serviceid),
             )
             return cursor.rowcount > 0
 
 
-def deactivate_service(serviceid: int) -> bool:
+def deactivate_service(serviceid: int, update_by: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("update services set status = false where serviceid = %s", (serviceid,))
+            cursor.execute(
+                "update services set status = false, update_by = %s, update_at = current_date where serviceid = %s",
+                (update_by, serviceid),
+            )
             return cursor.rowcount > 0
 
 
@@ -575,15 +617,16 @@ def insert_invoice_header(
     status: str,
     clientid: Optional[int],
     appoid: Optional[int],
+    created_by: int,
 ) -> int:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            insert into invoice_header(code, payment_method, total, status, clientid, appoid)
-            values (%s, %s, %s, %s, %s, %s)
+            insert into invoice_header(code, payment_method, total, status, clientid, appoid, created_by)
+            values (%s, %s, %s, %s, %s, %s, %s)
             returning inv_heaid
             """,
-            (code, payment_method, total, status, clientid, appoid),
+            (code, payment_method, total, status, clientid, appoid, created_by),
         )
         return cursor.fetchone()["inv_heaid"]
 
@@ -596,30 +639,60 @@ def insert_invoice_detail(
     quantity: int,
     unit_price: object,
     total: object,
+    created_by: int,
 ) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            insert into invoice_details(inv_heaid, serviceid, productid, quantity, unit_price, total)
-            values (%s, %s, %s, %s, %s, %s)
+            insert into invoice_details(inv_heaid, serviceid, productid, quantity, unit_price, total, created_by)
+            values (%s, %s, %s, %s, %s, %s, %s)
             """,
-            (inv_heaid, serviceid, productid, quantity, unit_price, total),
+            (inv_heaid, serviceid, productid, quantity, unit_price, total, created_by),
         )
 
 
-def list_invoices() -> Iterator[dict]:
+def get_app_user(user_id: int) -> Optional[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
+                "select userid, role, empid from app_user where userid = %s",
+                (user_id,),
+            )
+            return cursor.fetchone()
+
+
+def list_invoices(user_id: int) -> Iterator[dict]:
+    with get_connection() as connection:
+
+        # print ("userid es: {0}", user_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                # """
+                # select ih.inv_heaid, ih.code, ih.payment_method, ih.total::float8 as total,
+                #        ih.status, ih.clientid, ih.appoid,
+                #        ih.created_by, ih.update_by, ih.update_at,
+                #        p.name as client_name, p.last_name as client_last_name
+                # from invoice_header ih
+                # left join client c on c.clientid = ih.clientid
+                # left join person p on p.personid = c.personid
+                # where ih."date" = current_date
+                #   and (%s::boolean or ih.created_by = %s::int)
+                # order by ih.inv_heaid desc
+                # """, revisar
                 """
                 select ih.inv_heaid, ih.code, ih.payment_method, ih.total::float8 as total,
                        ih.status, ih.clientid, ih.appoid,
+                       ih.created_by, ih.update_by, ih.update_at, ih.date,
                        p.name as client_name, p.last_name as client_last_name
-                from invoice_header ih
+                from app_user au , invoice_header ih
                 left join client c on c.clientid = ih.clientid
                 left join person p on p.personid = c.personid
+                where ih.created_by = au.userid
+                and au.userid = %s
                 order by ih.inv_heaid desc
-                """
+
+                """,
+                (user_id,),
             )
             yield from cursor.fetchall()
 
@@ -630,8 +703,9 @@ def find_invoice(inv_heaid: int) -> Optional[dict]:
             cursor.execute(
                 """
                 select ih.inv_heaid, ih.code, ih.payment_method, ih.total::float8 as total,
-                       ih.status, ih.clientid, ih.appoid,  ih."date" ,
-                       p.name as client_name, p.last_name as client_last_name, p.email as client_email
+                       ih.status, ih.clientid, ih.appoid, ih."date",
+                       ih.created_by, ih.update_by, ih.update_at,
+                       p.name as client_name, p.last_name as client_last_name, p.email as client_email, c.clientid
                 from invoice_header ih
                 left join client c on c.clientid = ih.clientid
                 left join person p on p.personid = c.personid
@@ -646,6 +720,7 @@ def find_invoice(inv_heaid: int) -> Optional[dict]:
                 """
                   select id.serviceid, id.productid, id.quantity,
                        id.unit_price::float8 as unit_price, id.total::float8 as total,
+                       id.created_by, id.update_by, id.update_at,
                        s.name as service_name, pr.name as product_name
                 from invoice_details id
                 left join services s on s.serviceid = id.serviceid
@@ -659,40 +734,70 @@ def find_invoice(inv_heaid: int) -> Optional[dict]:
             return invoice
 
 
-def update_invoice_status(inv_heaid: int, invoice_status: str) -> bool:
+def update_invoice_status(inv_heaid: int, invoice_status: str, update_by: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 update invoice_header
-                set status = %s
+                set status = %s, update_by = %s, update_at = current_date
                 where inv_heaid = %s
                 """,
-                (invoice_status, inv_heaid),
+                (invoice_status, update_by, inv_heaid),
             )
             return cursor.rowcount > 0
 
 # ---- Ingresar citas 
-def _appointment_conflicts(cursor, date: str, start_time: str, end_time: str, empid: int, appoid: Optional[int] = None) -> bool:
+def _appointment_conflicts(cursor, date: str, start_time: str, end_time: str, empid: Optional[int], appoid: Optional[int] = None) -> bool:
     cursor.execute(
         "select pg_advisory_xact_lock(hashtext(%s))",
-        (f"{empid}:{date}",),
+        (f"{empid or 'all'}:{date}",),
     )
     query = """
         select 1
         from appointments
-        where empid = %s
-          and date = %s
+        where date = %s
           and status in ('P', 'A')
           and start_time < %s
           and end_time > %s
     """
-    params: list[object] = [empid, date, end_time, start_time]
+    params: list[object] = [date, end_time, start_time]
+    if empid is not None:
+        query += " and empid = %s"
+        params.append(empid)
     if appoid is not None:
         query += " and appoid <> %s"
         params.append(appoid)
     cursor.execute(query, params)
     return cursor.fetchone() is not None
+
+
+def _public_slot_is_full(cursor, date: str, start_time: str, end_time: str) -> bool:
+    cursor.execute(
+        "select pg_advisory_xact_lock(hashtext(%s))",
+        (f"public-slots:{date}",),
+    )
+    cursor.execute(
+        """
+        select
+            (select count(*)
+             from employee e
+             join person p on p.personid = e.personid
+             where p.status <> 'I') as employee_count,
+            (select count(*)
+             from appointments
+             where date = %s
+               and status in ('P', 'A')
+               and start_time < %s
+               and end_time > %s) as appointment_count
+        """,
+        (date, end_time, start_time),
+    )
+    availability = cursor.fetchone()
+    return (
+        availability["employee_count"] == 0
+        or availability["appointment_count"] >= availability["employee_count"]
+    )
 
 
 def _client_has_appointment_on_date(cursor, date: str, clientid: int, appoid: Optional[int] = None) -> bool:
@@ -742,8 +847,8 @@ def list_active_appointments() -> Iterator[dict]:
                        ep.name as employee_name, ep.last_name as employee_last_name,
                        cp.name as client_name, cp.last_name as client_last_name
                 from appointments a
-                join employee e on e.empid = a.empid
-                join person ep on ep.personid = e.personid
+                left join employee e on e.empid = a.empid
+                left join person ep on ep.personid = e.personid
                 join client c on c.clientid = a.clientid
                 join person cp on cp.personid = c.personid
                 where a.status <> 'I'
@@ -753,9 +858,18 @@ def list_active_appointments() -> Iterator[dict]:
             yield from cursor.fetchall()
 
 
-def update_appointment(appoid: int, date: str, start_time: str, end_time: str, description: str, appointment_status: str, empid: int, clientid: int) -> bool:
+def update_appointment(appoid: int, date: str, start_time: str, end_time: str, description: str, appointment_status: str, empid: int, clientid: int, user_empid: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                "select status, empid from appointments where appoid = %s",
+                (appoid,),
+            )
+            current = cursor.fetchone()
+            if current is None or (
+                current["empid"] is not None and current["empid"] != user_empid
+            ):
+                return False
             if appointment_status in ("P", "A"):
                 if _appointment_conflicts(cursor, date, start_time, end_time, empid, appoid):
                     raise AppointmentConflictError
@@ -793,7 +907,6 @@ def create_public_appointment(
     start_time: str,
     end_time: str,
     description: str,
-    empid: int,
     dni: str,
     name: str,
     last_name: str,
@@ -843,34 +956,54 @@ def create_public_appointment(
 
             if _client_has_appointment_on_date(cursor, date, clientid):
                 raise ClientDailyAppointmentError
-            if _appointment_conflicts(cursor, date, start_time, end_time, empid):
+            if _public_slot_is_full(cursor, date, start_time, end_time):
                 raise AppointmentConflictError
 
             cursor.execute(
                 """
                 insert into appointments(date, start_time, end_time, description, status, empid, clientid)
-                values (%s, %s, %s, %s, 'P', %s, %s)
+                values (%s, %s, %s, %s, 'P', null, %s)
                 """,
-                (date, start_time, end_time, description, empid, clientid),
+                (date, start_time, end_time, description, clientid),
             )
 
-def update_appointment_status(appoid: int, appointment_status: str) -> bool:
+def update_appointment_status(appoid: int, appointment_status: str, empid: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "select clientid, status from appointments where appoid = %s for update",
+                "select clientid, status, empid from appointments where appoid = %s for update",
                 (appoid,),
             )
             current = cursor.fetchone()
             if current is None or current["status"] not in ("P", "A"):
                 return False
+            if current["empid"] is not None and current["empid"] != empid:
+                return False
+            if appointment_status == "F" and current["status"] != "A":
+                return False
+            if appointment_status == "A":
+                cursor.execute(
+                    """
+                    select 1
+                    from appointments
+                    where appoid <> %s
+                      and date = (select date from appointments where appoid = %s)
+                      and status in ('P', 'A')
+                      and start_time < (select end_time from appointments where appoid = %s)
+                      and end_time > (select start_time from appointments where appoid = %s)
+                      and empid = %s
+                    """,
+                    (appoid, appoid, appoid, appoid, empid),
+                )
+                if cursor.fetchone() is not None:
+                    return False
             cursor.execute(
                 """
                 update appointments
-                set status = %s
+                set status = %s, empid = case when %s = 'A' then %s else empid end
                 where appoid = %s and status in ('P', 'A')
                 """,
-                (appointment_status, appoid),
+                (appointment_status, appointment_status, empid, appoid),
             )
             if cursor.rowcount == 0:
                 return False
@@ -926,10 +1059,19 @@ def redeem_client_reward(clientid: int) -> dict:
             return reward
 
 
-def deactivate_appointment(appoid: int) -> bool:
+def deactivate_appointment(appoid: int, user_empid: int) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("update appointments set status = 'I' where appoid = %s and status in ('P', 'A')", (appoid,))
+            cursor.execute(
+                """
+                update appointments
+                set status = 'I'
+                where appoid = %s
+                  and status in ('P', 'A')
+                  and (empid is null or empid = %s)
+                """,
+                (appoid, user_empid),
+            )
             return cursor.rowcount > 0
 
 def login(username:str, password:str) -> Optional[dict]:
@@ -937,7 +1079,8 @@ def login(username:str, password:str) -> Optional[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select au.username, au."password" , au.role, e.empid, p.personid, p.name, p.last_name
+                select au.userid, au.username, au."password", au.role, e.empid,
+                       p.personid, p.name, p.last_name
                 from app_user au
                 join employee e on e.empid = au.empid
                 join person p on p.personid = e.personid

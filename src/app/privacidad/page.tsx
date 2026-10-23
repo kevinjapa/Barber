@@ -1,3 +1,5 @@
+import { ThemeToggle } from "@/components/barber/ThemeToggle";
+
 export const metadata = {
   title: "Aviso de privacidad | AlvaBarber",
   description: "Información sobre el uso y protección de datos personales.",
@@ -7,9 +9,12 @@ export default function PrivacyPage() {
   return (
     <main className="booking-shell min-h-screen px-5 py-10 sm:px-8">
       <article className="booking-card mx-auto max-w-3xl p-6 sm:p-10">
-        <a href="/reservar" className="text-sm font-semibold text-[#1d5b4f]">
-          ← Volver a reservas
-        </a>
+        <div className="flex items-center justify-between gap-4">
+          <a href="/reservar" className="text-sm font-semibold text-[#1d5b4f]">
+            ← Volver a reservas
+          </a>
+          <ThemeToggle />
+        </div>
         <p className="booking-kicker mt-10">Transparencia</p>
         <h1 className="mt-3 font-serif text-4xl text-[#153e38]">
           Aviso de privacidad

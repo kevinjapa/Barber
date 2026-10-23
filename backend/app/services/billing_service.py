@@ -121,10 +121,16 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
             status_code,
             invoice.clientid,
             invoice.appoid,
+            invoice.user_id,
         )
 
         for detail in calculated_details:
-            insert_invoice_detail(connection, invoice_id, **detail)
+            insert_invoice_detail(
+                connection,
+                invoice_id,
+                created_by=invoice.user_id,
+                **detail,
+            )
 
         if status_code == "P":
             _decrease_invoice_products(connection, calculated_details)
@@ -137,7 +143,7 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
     }
 
 
-def mark_invoice_as_paid(inv_heaid: int) -> None:
+def mark_invoice_as_paid(inv_heaid: int, update_by: int) -> None:
     with get_connection() as connection:
         invoice = get_invoice_for_update(connection, inv_heaid)
         if invoice is None:
@@ -150,6 +156,10 @@ def mark_invoice_as_paid(inv_heaid: int) -> None:
         _decrease_invoice_products(connection, invoice["product_details"])
         with connection.cursor() as cursor:
             cursor.execute(
-                "update invoice_header set status = 'P' where inv_heaid = %s",
-                (inv_heaid,),
+                """
+                update invoice_header
+                set status = 'P', update_by = %s, update_at = current_date
+                where inv_heaid = %s
+                """,
+                (update_by, inv_heaid),
             )

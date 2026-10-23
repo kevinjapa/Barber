@@ -1,8 +1,9 @@
 import type { FormEvent } from "react";
-import type { EmployeeForm, UserForm } from "./types";
+import type { Employee, EmployeeForm, UserForm } from "./types";
 
 type AdministrationPanelProps = {
-  activeTab: "employee" | "user";
+  activeTab: "listEmployees" | "employee" | "user" ;
+  employees: Employee[];
   employeeForm: EmployeeForm;
   userForm: UserForm;
   employeeError: string;
@@ -11,7 +12,7 @@ type AdministrationPanelProps = {
   userMessage: string;
   isCreatingEmployee: boolean;
   isCreatingUser: boolean;
-  onTabChange: (tab: "employee" | "user") => void;
+  onTabChange: (tab:  "listEmployees" | "employee" | "user" ) => void;
   onEmployeeFieldChange: (field: keyof EmployeeForm, value: string) => void;
   onUserFieldChange: (field: keyof UserForm, value: string) => void;
   onCreateEmployee: (event: FormEvent<HTMLFormElement>) => void;
@@ -22,6 +23,7 @@ const inputClass = "field-control mt-2 w-full px-3 py-3";
 
 export function AdministrationPanel({
   activeTab,
+  employees,
   employeeForm,
   userForm,
   employeeError,
@@ -51,6 +53,17 @@ export function AdministrationPanel({
       <div className="mt-6 flex gap-2 border-b border-[#d9cec1]">
         <button
           type="button"
+          onClick={() => onTabChange("listEmployees")}
+          className={`px-4 py-3 text-sm font-semibold ${
+            activeTab === "listEmployees"
+              ? "border-b-2 border-[#c8754e]"
+              : "text-[#75675d]"
+          }`}
+        >
+          Lista de empleados
+        </button>
+        <button
+          type="button"
           onClick={() => onTabChange("employee")}
           className={`px-4 py-3 text-sm font-semibold ${activeTab === "employee" ? "border-b-2 border-[#c8754e]" : "text-[#75675d]"}`}
         >
@@ -63,8 +76,6 @@ export function AdministrationPanel({
         >
           Nuevo usuario
         </button>
-
-        <button type="button" onClick={() => onTabChange("user")}>Lista de empleados</button>
         
       </div>
       {activeTab === "employee" ? (
@@ -165,7 +176,7 @@ export function AdministrationPanel({
             </button>
           </div>
         </form>
-      ) : (
+      ) : activeTab === "user" ? (
         <form
           onSubmit={onCreateUser}
           className="panel-surface mt-8 max-w-2xl border p-6"
@@ -239,6 +250,52 @@ export function AdministrationPanel({
             {isCreatingUser ? "Guardando..." : "Guardar usuario"}
           </button>
         </form>
+      ) : (
+        <div className="panel-surface mt-8 border p-6">
+          <div className="flex flex-col justify-between gap-3 border-b border-[#e6dbcf] pb-5 sm:flex-row sm:items-end">
+            <div>
+              <p className="panel-kicker text-sm font-semibold uppercase">
+                Directorio interno
+              </p>
+              <h3 className="mt-2 font-serif text-3xl">
+                Lista de empleados
+              </h3>
+            </div>
+            <span className="text-sm text-[#65716b]">
+              {employees.length} registrados
+            </span>
+          </div>
+          {employees.length === 0 ? (
+            <p className="py-8 text-sm text-[#65716b]">
+              No hay empleados registrados.
+            </p>
+          ) : (
+            <div className="divide-y divide-[#e6dbcf]">
+              {employees.map((employee) => (
+                <article
+                  key={employee.empid}
+                  className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <h4 className="font-semibold">
+                      {employee.name} {employee.last_name}
+                    </h4>
+                    <p className="mt-1 text-sm text-[#65716b]">
+                      DNI: {employee.dni}
+                    </p>
+                    <p className="mt-1 text-sm text-[#65716b]">
+                      {employee.email}
+                    </p>
+                  </div>
+                  <div className="text-sm text-[#65716b] sm:text-right">
+                    <p>Telefono: {employee.phone || "Sin teléfono"}</p>
+                    {/* <p className="mt-1">ID: {employee.empid}</p> */}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </section>
   );
