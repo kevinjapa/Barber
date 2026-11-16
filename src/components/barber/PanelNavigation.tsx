@@ -37,6 +37,11 @@ export function PanelNavigation({
             label: "Administración",
             description: "Equipo y accesos",
           },
+          {
+            id: "rewards" as const,
+            label: "Canjes y Promociones",
+            description: "Beneficios por puntos",
+          },
         ]
       : navigationItems;
 

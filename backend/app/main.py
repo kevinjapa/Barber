@@ -10,6 +10,7 @@ from argon2.exceptions import VerifyMismatchError
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from pathlib import Path
+from secrets import token_urlsafe
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 from .services.billing_service import (
@@ -30,6 +31,7 @@ from .services.database_Service import (
     find_service,
     insert_appointment,
     list_active_appointments,
+    list_client_appointments,
     list_active_employees,
     insert_appuser,
     insert_client,
@@ -61,6 +63,12 @@ from .services.database_Service import (
     get_client_rewards,
     initialize_rewards,
     redeem_client_reward,
+    list_reward_promotions,
+    create_reward_promotion,
+    update_reward_promotion,
+    set_reward_promotion_status,
+    create_client_account,
+    login_client_account,
     login,
 )
 
@@ -95,6 +103,25 @@ class ServiceUpdate(BaseModel):
     name: str = Field(min_length=1)
     duration: int = Field(gt=0)
     price: float = Field(ge=0)
+
+
+class RewardPromotionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    points_required: int = Field(gt=0)
+    serviceid: Optional[int] = Field(default=None, gt=0)
+
+
+class RewardPromotionUpdate(RewardPromotionCreate):
+    active: bool = True
+
+
+class RewardPromotionStatus(BaseModel):
+    active: bool
+
+
+class RewardRedeemRequest(BaseModel):
+    promotionid: int = Field(gt=0)
 
 
 class ProductCreate(BaseModel):
@@ -166,6 +193,24 @@ class PublicAppointmentCreate(BaseModel):
     birth_date: Optional[str] = Field(default=None, max_length=10)
     privacy_consent: bool
     marketing_consent: bool = False
+    serviceid: Optional[int] = Field(default=None, gt=0)
+    empid: Optional[int] = Field(default=None, gt=0)
+    reward_eligible: bool = True
+
+
+class ClientAccountCreate(BaseModel):
+    dni: str = Field(min_length=5, max_length=20)
+    name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    email: str = Field(min_length=5, max_length=160)
+    phone: str = Field(min_length=7, max_length=30)
+    password: str = Field(min_length=8, max_length=128)
+    privacy_consent: bool
+
+
+class ClientLogin(BaseModel):
+    email: str = Field(min_length=5, max_length=160)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class PublicClientCreate(BaseModel):
@@ -193,6 +238,24 @@ app.add_middleware(
 _public_request_log: dict[str, list[float]] = defaultdict(list)
 PUBLIC_RATE_LIMIT = 30
 PUBLIC_RATE_WINDOW_SECONDS = 60
+_client_sessions: dict[str, int] = {}
+_admin_sessions: dict[str, int] = {}
+
+
+def require_admin(request: Request) -> None:
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    userid = _admin_sessions.get(token)
+    if not userid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión administrativa inválida o expirada")
+    user = get_app_user(userid)
+    if user is None or user["role"] != "adm":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere un usuario administrador")
+
+
+def require_client_session(request: Request, clientid: int) -> None:
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if not token or _client_sessions.get(token) != clientid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión inválida o expirada")
 
 
 @app.middleware("http")
@@ -433,15 +496,121 @@ def create_public_client(client: PublicClientCreate):
     return {"status": "ok", "clientid": clientid}
 
 
+@app.post("/api/public/account", status_code=status.HTTP_201_CREATED)
+def create_public_account(account: ClientAccountCreate):
+    if not account.privacy_consent:
+        raise HTTPException(status_code=400, detail="Debes aceptar el aviso de privacidad")
+    existing = find_client_by_dni(account.dni)
+    if existing is None:
+        clientid = insert_client(
+            account.dni, account.name, account.last_name, account.email, "",
+            account.phone, account.dni,
+        )
+    else:
+        clientid = existing["clientid"]
+    try:
+        create_client_account(
+            clientid,
+            account.email,
+            encriptar_contraseña(account.password),
+        )
+    except Exception as error:
+        raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese correo") from error
+    session_token = token_urlsafe(32)
+    _client_sessions[session_token] = clientid
+    return {
+        "status": "ok",
+        "session_token": session_token,
+        "clientid": clientid,
+        "dni": account.dni,
+        "name": account.name,
+        "last_name": account.last_name,
+        "email": account.email,
+        "phone": account.phone,
+    }
+
+
+@app.post("/api/public/account/login")
+def login_public_account(credentials: ClientLogin):
+    account = login_client_account(credentials.email)
+    if account is None:
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+    try:
+        PasswordHasher().verify(account["password_hash"], credentials.password)
+    except VerifyMismatchError as error:
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos") from error
+    session_token = token_urlsafe(32)
+    _client_sessions[session_token] = account["clientid"]
+    return {
+        "session_token": session_token,
+        "clientid": account["clientid"],
+        "dni": account["dni"],
+        "name": account["name"],
+        "last_name": account["last_name"],
+        "email": account["email"],
+        "phone": account.get("phone", ""),
+    }
+
+
 @app.get("/api/client/{clientid}/rewards")
-def get_rewards(clientid: int):
-    return get_client_rewards(clientid)
+def get_rewards(clientid: int, request: Request):
+    require_client_session(request, clientid)
+    reward = get_client_rewards(clientid)
+    reward["promotions"] = list_reward_promotions()
+    return reward
+
+
+@app.get("/api/reward-promotions")
+def get_reward_promotions(request: Request, include_inactive: bool = False):
+    require_admin(request)
+    return list_reward_promotions(include_inactive=include_inactive)
+
+
+@app.post("/api/reward-promotions", status_code=status.HTTP_201_CREATED)
+def add_reward_promotion(promotion: RewardPromotionCreate, request: Request):
+    require_admin(request)
+    return create_reward_promotion(**promotion.model_dump())
+
+
+@app.put("/api/reward-promotions/{promotionid}")
+def edit_reward_promotion(promotionid: int, promotion: RewardPromotionUpdate, request: Request):
+    require_admin(request)
+    if not update_reward_promotion(promotionid, **promotion.model_dump()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Promoción no encontrada")
+    return {"status": "ok", "message": "Promoción actualizada correctamente"}
+
+
+@app.patch("/api/reward-promotions/{promotionid}/status")
+def change_reward_promotion_status(promotionid: int, promotion_status: RewardPromotionStatus, request: Request):
+    require_admin(request)
+    if not set_reward_promotion_status(promotionid, promotion_status.active):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Promoción no encontrada")
+    return {"status": "ok", "message": "Estado de la promoción actualizado"}
+
+
+@app.get("/api/public/account/{clientid}/appointments")
+def get_client_appointments(clientid: int, request: Request):
+    authorization = request.headers.get("authorization", "")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or _client_sessions.get(token) != clientid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión inválida o expirada")
+    return list_client_appointments(clientid)
 
 
 @app.post("/api/client/{clientid}/rewards/redeem")
-def redeem_reward(clientid: int):
+def redeem_reward(clientid: int, redemption: RewardRedeemRequest, request: Request):
+    require_client_session(request, clientid)
     try:
-        return redeem_client_reward(clientid)
+        return redeem_client_reward(clientid, redemption.promotionid)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+
+@app.post("/api/admin/client/{clientid}/rewards/redeem")
+def admin_redeem_reward(clientid: int, redemption: RewardRedeemRequest, request: Request):
+    require_admin(request)
+    try:
+        return redeem_client_reward(clientid, redemption.promotionid)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
@@ -678,7 +847,8 @@ def create_appuser(appuser: dict) -> dict[str, str]:
 @app.post("/api/login")
 def login_result(credentials: dict) -> dict[str, object]:
     very_pass = PasswordHasher()
-    user = login(credentials["username"], credentials["password"])
+    # user = login(credentials["username"], credentials["password"])
+    user = login(credentials["username"])
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
     try:
@@ -688,11 +858,21 @@ def login_result(credentials: dict) -> dict[str, object]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas"
         )
+    session_token = token_urlsafe(32)
+    _admin_sessions[session_token] = user["userid"]
     return {
         "status": "ok","message": "Login successful","username": user["username"],
         "last_name": user["last_name"],"role": user["role"],
         "userid": user["userid"], "empid": user["empid"],
+        "session_token": session_token,
     }
+
+
+@app.post("/api/logout")
+def logout(request: Request):
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    _admin_sessions.pop(token, None)
+    return {"status": "ok"}
 
 
 # send email 

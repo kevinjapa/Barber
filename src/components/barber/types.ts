@@ -10,6 +10,16 @@ export type Service = {
   update_at?: string | null;
 };
 
+export type RewardPromotion = {
+  promotionid: number;
+  name: string;
+  description: string;
+  points_required: number;
+  serviceid: number | null;
+  service_name?: string | null;
+  active: boolean;
+};
+
 export type Client = {
   clientid: number;
   personid: number;
@@ -56,6 +66,7 @@ export type Product = {
   stock: string;
   price: number;
   description?: string;
+  img_url?: string | null;
   created_by?: number | null;
   update_by?: number | null;
   update_at?: string | null;
@@ -106,9 +117,10 @@ export type AuthenticatedUser = {
   last_name?: string;
   role?: string;
   empid?: number;
+  session_token?: string;
 };
 
-export type PanelSection = "dashboard" | "appointments" | "clients" | "services" | "products" | "billing" | "administration" | "administration-users";
+export type PanelSection = "dashboard" | "appointments" | "clients" | "services" | "products" | "billing" | "administration" | "administration-users" | "rewards";
 
 export type EmployeeForm = {
   dni: string;

@@ -9,6 +9,7 @@ from .database_Service import (
     get_connection,
     insert_invoice_detail,
     insert_invoice_header,
+    record_invoice_rewards,
 )
 
 
@@ -134,6 +135,7 @@ def create_invoice(invoice: Any) -> dict[str, Any]:
 
         if status_code == "P":
             _decrease_invoice_products(connection, calculated_details)
+            record_invoice_rewards(connection, invoice_id)
 
     return {
         "inv_heaid": invoice_id,
@@ -163,3 +165,4 @@ def mark_invoice_as_paid(inv_heaid: int, update_by: int) -> None:
                 """,
                 (update_by, inv_heaid),
             )
+        record_invoice_rewards(connection, inv_heaid)

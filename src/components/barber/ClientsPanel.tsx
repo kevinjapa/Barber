@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import type { Client } from "./types";
+import type { Client, RewardPromotion } from "./types";
 
 type ClientForm = {
   dni: string;
@@ -15,6 +15,8 @@ type ClientForm = {
 type ClientsPanelProps = {
   apiUrl: string;
   clients: Client[];
+  promotions: RewardPromotion[];
+  adminSessionToken?: string;
   onChanged: () => void;
 };
 
@@ -40,6 +42,8 @@ async function readApiResponse(response: Response) {
 export function ClientsPanel({
   apiUrl,
   clients,
+  promotions,
+  adminSessionToken,
   onChanged,
 }: ClientsPanelProps) {
   const [form, setForm] = useState<ClientForm>(emptyForm);
@@ -50,6 +54,7 @@ export function ClientsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
   const [isRedeeming, setIsRedeeming] = useState<number | null>(null);
+  const [selectedPromotionByClient, setSelectedPromotionByClient] = useState<Record<number, string>>({});
 
   const filteredClients = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -67,6 +72,20 @@ export function ClientsPanel({
 
   function updateField(field: keyof ClientForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function getEligiblePromotions(client: Client) {
+    return promotions.filter(
+      (promotion) => promotion.active && (client.points ?? 0) >= promotion.points_required,
+    );
+  }
+
+  function getSelectedPromotionId(client: Client) {
+    const eligiblePromotions = getEligiblePromotions(client);
+    const selectedPromotionId = selectedPromotionByClient[client.clientid];
+    return eligiblePromotions.some((promotion) => String(promotion.promotionid) === selectedPromotionId)
+      ? selectedPromotionId
+      : String(eligiblePromotions[0]?.promotionid ?? "");
   }
 
   function clearFeedback() {
@@ -155,17 +174,23 @@ export function ClientsPanel({
     }
   }
 
-  async function handleRedeem(client: Client) {
-    if ((client.points ?? 0) < 10) return;
+  async function handleRedeem(client: Client, promotionid: number) {
+    const promotion = promotions.find((item) => item.promotionid === promotionid && item.active);
+    if (!promotion || (client.points ?? 0) < promotion.points_required) return;
     clearFeedback();
     setIsRedeeming(client.clientid);
     try {
       await readApiResponse(
-        await fetch(`${apiUrl}/api/client/${client.clientid}/rewards/redeem`, {
+        await fetch(`${apiUrl}/api/admin/client/${client.clientid}/rewards/redeem`, {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${adminSessionToken ?? ""}`,
+          },
+          body: JSON.stringify({ promotionid }),
         }),
       );
-      setMessage(`Canje aplicado a ${client.name}: corte gratis por 10 puntos.`);
+      setMessage(`Canje aplicado a ${client.name}: ${promotion.name}.`);
       onChanged();
     } catch (redeemError) {
       setError(
@@ -262,15 +287,27 @@ export function ClientsPanel({
                         ? "Inactivando..."
                         : "Inactivar"}
                     </button>
-                    {(client.points ?? 0) >= 10 && (
-                      <button
-                        type="button"
-                        onClick={() => void handleRedeem(client)}
-                        disabled={isRedeeming === client.clientid}
-                        className="text-[#1d5b4f] hover:text-[#153e38] disabled:opacity-50"
-                      >
-                        {isRedeeming === client.clientid ? "Canjeando..." : "Canjear corte"}
-                      </button>
+                    {adminSessionToken && getEligiblePromotions(client).length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          aria-label={`Canje para ${client.name}`}
+                          value={getSelectedPromotionId(client)}
+                          onChange={(event) => setSelectedPromotionByClient((current) => ({ ...current, [client.clientid]: event.target.value }))}
+                          className="field-control max-w-40 px-2 py-2 text-xs"
+                        >
+                          {getEligiblePromotions(client).map((promotion) => (
+                            <option key={promotion.promotionid} value={promotion.promotionid}>{promotion.name} · {promotion.points_required} pts</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleRedeem(client, Number(getSelectedPromotionId(client)))}
+                          disabled={isRedeeming === client.clientid}
+                          className="text-[#1d5b4f] hover:text-[#153e38] disabled:opacity-50"
+                        >
+                          {isRedeeming === client.clientid ? "Canjeando..." : "Canjear"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
