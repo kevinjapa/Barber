@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ThemeToggle } from "./ThemeToggle";
 
 export type CustomerSession = {
   clientid: number;
@@ -30,8 +30,10 @@ export function readCustomerSession(): CustomerSession | null {
 }
 
 export function PublicHeader() {
+  const router = useRouter();
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setSession(readCustomerSession()));
@@ -39,8 +41,16 @@ export function PublicHeader() {
   }, []);
 
   function signOut() {
+    if (session?.session_token) {
+      void fetch("/api/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.session_token}` },
+      });
+    }
     window.localStorage.removeItem(customerSessionKey);
     setSession(null);
+    setAccountMenuOpen(false);
+    router.replace("/");
   }
 
   return (
@@ -54,7 +64,6 @@ export function PublicHeader() {
         <Link href="/servicios">Servicios</Link>
         <Link href="/productos">Productos</Link>
         <Link href="/nosotros">Nosotros</Link>
-        {session && <Link href="/reservas">Mis reservas</Link>}
       </nav>
       <button
         type="button"
@@ -68,17 +77,39 @@ export function PublicHeader() {
       </button>
       <div className="flex items-center gap-3">
         {session ? (
-          <>
-            <Link href="/perfil" className="public-account-link">
-              Hola, Bienvenido {session.name}
-            </Link>
-            <button type="button" onClick={signOut} className="public-signout">Salir</button>
-          </>
+          <div className="public-account-menu">
+            <button
+              type="button"
+              className="public-account-trigger"
+              aria-label="Abrir menú de usuario"
+              aria-haspopup="menu"
+              aria-expanded={accountMenuOpen}
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M4.5 20c.7-3.7 3.4-5.7 7.5-5.7s6.8 2 7.5 5.7" />
+              </svg>
+            </button>
+            {accountMenuOpen && (
+              <div className="public-account-dropdown" role="menu">
+                <p className="public-account-greeting">Hola, {session.name}</p>
+                <Link href="/perfil" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Mi perfil</Link>
+                <Link href="/reservas" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Mis reservas</Link>
+                <Link href="/reservar" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Reservar ahora</Link>
+                <button type="button" role="menuitem" onClick={signOut}>Salir</button>
+              </div>
+            )}
+          </div>
         ) : (
-          <Link href="/acceso" className="public-account-link">Iniciar sesión</Link>
+          <Link href="/acceso" className="public-account-trigger" aria-label="Iniciar sesión">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M4.5 20c.7-3.7 3.4-5.7 7.5-5.7s6.8 2 7.5 5.7" />
+            </svg>
+          </Link>
         )}
         <Link href="/reservar" className="public-header-cta">Reservar ahora</Link>
-        {/* <ThemeToggle /> */}
       </div>
       {menuOpen && (
         <nav id="public-mobile-nav" className="public-mobile-nav" aria-label="Menú móvil">

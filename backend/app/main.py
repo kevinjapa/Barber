@@ -872,6 +872,7 @@ def login_result(credentials: dict) -> dict[str, object]:
 def logout(request: Request):
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     _admin_sessions.pop(token, None)
+    _client_sessions.pop(token, None)
     return {"status": "ok"}
 
 

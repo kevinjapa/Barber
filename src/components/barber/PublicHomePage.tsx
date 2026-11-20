@@ -105,6 +105,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Product, Service } from "./types";
@@ -208,10 +209,13 @@ export function PublicHomePage() {
 
           <div className="alva-hero-visual">
             <div className="alva-hero-photo">
-              <img
-                src="/assets/alvaberber_icon.png"
-                alt="Identidad visual de ALVA BARBER"
+              <Image
+                src="/assets/pexels-barber-experience-32847602.jpg"
+                alt="Barbero atendiendo a un cliente en una barbería tradicional; fotografía referencial."
                 className="alva-hero-image"
+                fill
+                sizes="(max-width: 700px) 100vw, 46vw"
+                preload
               />
             </div>
 
@@ -219,7 +223,7 @@ export function PublicHomePage() {
 
             <div className="alva-hero-index">
               <span>ALVA</span>
-              <span>EST. / BARBER STUDIO</span>
+              <span>FOTOGRAFÍA REFERENCIAL · PEXELS</span>
             </div>
 
             <div className="alva-hero-note">
@@ -287,6 +291,42 @@ export function PublicHomePage() {
               </Link>
             </div>
           </div>
+        </section>
+
+        {/* REFERENCE PHOTOS */}
+        <section
+          className="alva-reference-gallery"
+          aria-label="Fotografías referenciales de barbería"
+        >
+          <figure className="alva-reference-card">
+            <Image
+              src="/assets/pexels-barber-service-36105790.jpg"
+              alt="Barbero trabajando junto a su cliente; fotografía referencial."
+              className="alva-reference-image"
+              fill
+              sizes="(max-width: 700px) 100vw, (max-width: 1024px) 50vw, 42vw"
+            />
+            <span className="alva-reference-tag">IMAGEN REFERENCIAL · PEXELS</span>
+            <figcaption>
+              <span>EL OFICIO</span>
+              <strong>Atención en cada detalle</strong>
+            </figcaption>
+          </figure>
+
+          <figure className="alva-reference-card">
+            <Image
+              src="/assets/pexels-barbershop-interior-37764947.jpg"
+              alt="Interior clásico de barbería con sillones de barbero; fotografía referencial."
+              className="alva-reference-image"
+              fill
+              sizes="(max-width: 700px) 100vw, (max-width: 1024px) 50vw, 42vw"
+            />
+            <span className="alva-reference-tag">IMAGEN REFERENCIAL · PEXELS</span>
+            <figcaption>
+              <span>EL AMBIENTE</span>
+              <strong>Un espacio para el ritual</strong>
+            </figcaption>
+          </figure>
         </section>
 
         {/* SERVICES */}
@@ -494,7 +534,35 @@ export function PublicHomePage() {
           </div>
         </section>
 
-        {/* FINAL CTA */}
+        {/* FINAL CTA
+        <section className="alva-final-cta">
+          <div className="alva-final-grid" aria-hidden="true" />
+
+          <div className="alva-section-index">
+            <span>05</span>
+            <span>ES TU MOMENTO</span>
+          </div>
+          <div className="TargetPresentation">
+            <img
+            src="assets/TargetPresentation.jpg"
+            alt="Targeta de presentación de Alva Barber, con el logo y la dirección de contacto; fotografía referencial."
+            loading="lazy"
+            />
+          </div>
+          <h2>
+            Tu próximo
+            <br />
+            estilo empieza aquí<span>.</span>
+          </h2>
+          <p>
+            Elige tu servicio, encuentra tu horario y deja
+            que el resto comience con una reserva.
+          </p>
+          <Link href="/reservar" className="alva-button-primary">
+            Reservar mi cita <span>↗</span>
+          </Link>
+        </section> */}
+
         <section className="alva-final-cta">
           <div className="alva-final-grid" aria-hidden="true" />
 
@@ -503,20 +571,45 @@ export function PublicHomePage() {
             <span>ES TU MOMENTO</span>
           </div>
 
-          <h2>
+          <div className="TargetPresentation">
+            <img
+              src="assets/TargetPresentation.jpg"
+              alt="Tarjeta de presentación de Alva Barber"
+              loading="lazy"
+            />
+            <div className="TargetPresentation-content">
+              {/* <h3>ALVA BARBER</h3> */}
+              <h2>
+                Tu próximo
+                <br />
+                estilo empieza aquí<span>.</span>
+              </h2>
+              {/* <p>Tu estilo, nuestra pasión.</p> */}
+              {/* <span>EST. CUENCA · ECUADOR</span> */}
+              <p>
+                Elige tu servicio, encuentra tu horario y deja
+                que el resto comience con una reserva.
+              </p>
+              <Link href="/reservar" className="alva-button-primary">
+                Reservar mi cita <span>↗</span>
+              </Link>
+            </div>
+          </div>
+
+          {/* <h2>
             Tu próximo
             <br />
             estilo empieza aquí<span>.</span>
-          </h2>
+          </h2> */}
 
-          <p>
+          {/* <p>
             Elige tu servicio, encuentra tu horario y deja
             que el resto comience con una reserva.
           </p>
 
           <Link href="/reservar" className="alva-button-primary">
             Reservar mi cita <span>↗</span>
-          </Link>
+          </Link> */}
         </section>
 
         {/* FOOTER */}

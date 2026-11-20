@@ -12,7 +12,6 @@ import { PanelNavigation } from "@/components/barber/PanelNavigation";
 import { ProductsPanel } from "@/components/barber/ProductsPanel";
 import { RewardPromotionsPanel } from "@/components/barber/RewardPromotionsPanel";
 import { ServicesPanel } from "@/components/barber/ServicesPanel";
-import { ThemeToggle } from "@/components/barber/ThemeToggle";
 import {
   emptyEmployee,
   emptyUser,
@@ -496,7 +495,6 @@ export default function AdminPage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <ThemeToggle />
               <span className="text-right text-sm text-[#65716b]">
                 <strong className="block text-[#1f2925]">
                   {user.username}

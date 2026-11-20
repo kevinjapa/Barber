@@ -1,5 +1,4 @@
 import type { FormEvent } from "react";
-import { ThemeToggle } from "./ThemeToggle";
 
 type LoginScreenProps = {
   username: string;
@@ -22,9 +21,6 @@ export function LoginScreen({
 }: LoginScreenProps) {
   return (
     <main className="login-shell relative flex min-h-screen items-center justify-center px-4 py-6 text-[#f5faf7] sm:px-6 sm:py-10">
-      <div className="absolute right-4 top-4 sm:right-8 sm:top-8">
-        <ThemeToggle />
-      </div>
       <section className="login-card grid w-full max-w-5xl overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
         <div className="login-brand relative flex min-h-80 flex-col justify-between overflow-hidden p-7 text-[#f6f8f5] sm:p-12 lg:min-h-[600px]">
           <div className="login-brand-glow" />
